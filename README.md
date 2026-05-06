@@ -12,7 +12,7 @@ An open-source multi-tenant cloud platform built on Kubernetes.
 
 ## Prerequisites
 
-Go 1.23+, Docker, k3d, kubectl, Helm, Tilt, oapi-codegen v2.
+Go 1.26+, Docker, k3d, kubectl, Helm, Tilt, oapi-codegen v2.
 
 See `docs/plan/README.md` for the full development setup guide.
 
