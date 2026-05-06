@@ -1,0 +1,14 @@
+go 1.26
+
+use (
+	./libs/clients/cf-accounts
+	./libs/clients/cf-provisioner
+	./libs/cloudforge-core
+	./libs/openbao
+	./libs/scylladb
+	./services/cf-accounts
+	./services/cf-provisioner
+	./services/cf-router
+	./tools/cf-cli
+	./tools/migrations
+)
