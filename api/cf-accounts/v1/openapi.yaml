@@ -1,0 +1,869 @@
+openapi: "3.0.3"
+
+info:
+  title: CF-Accounts
+  version: "1.0.0"
+  description: >
+    CF-Accounts is the authoritative registry service for CloudForge accounts,
+    tenants, private networks, and API credentials. It is consumed by CF-Router
+    for tenant resolution and by end users/operators via the CloudForge API.
+  contact:
+    name: CloudForge Platform Team
+    url: https://github.com/jtomasevic/cloud-forge-2
+
+servers:
+  - url: http://localhost:8081
+    description: Local development
+
+# ---------------------------------------------------------------------------
+# Security schemes
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT bearer token issued by Keycloak.
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-CF-API-Key
+      description: CloudForge API key passed as a request header.
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: X-CF-Internal-Secret
+      description: >
+        Shared secret used only for internal service-to-service calls (e.g.
+        CF-Router → CF-Accounts tenant resolution). Never exposed publicly.
+
+  # -------------------------------------------------------------------------
+  # Reusable schemas
+  # -------------------------------------------------------------------------
+  schemas:
+
+    Account:
+      type: object
+      description: A CloudForge customer account.
+      required: [id, email, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique account identifier.
+        email:
+          type: string
+          format: email
+          description: Primary contact e-mail for the account owner.
+        status:
+          type: string
+          enum: [active, suspended, deleted]
+          description: Current lifecycle state of the account.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the account was created (ISO 8601, UTC).
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the account was last updated (ISO 8601, UTC).
+
+    CreateAccountRequest:
+      type: object
+      description: Payload for creating a new customer account.
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Primary contact e-mail. Must be unique across all accounts.
+
+    AccountList:
+      type: object
+      description: Paginated list of accounts.
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Account'
+        total:
+          type: integer
+          description: Total number of accounts matching the query.
+        limit:
+          type: integer
+          description: Maximum number of items returned in this page.
+        offset:
+          type: integer
+          description: Zero-based index of the first item in this page.
+
+    Tenant:
+      type: object
+      description: A CloudForge tenant — an isolated workload environment within an account.
+      required: [id, accountId, slug, region, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique tenant identifier.
+        accountId:
+          type: string
+          format: uuid
+          description: ID of the parent account.
+        slug:
+          type: string
+          pattern: "^[a-z0-9-]{3,63}$"
+          description: >
+            Human-readable, URL-safe identifier for the tenant. Must be
+            unique within the account. Lowercase letters, digits and hyphens
+            only; 3–63 characters.
+        region:
+          type: string
+          description: Deployment region, e.g. "eu-west-1".
+        status:
+          type: string
+          enum: [provisioning, active, suspended, deprovisioning, deprovisioned]
+          description: Current lifecycle state of the tenant.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the tenant was created (ISO 8601, UTC).
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the tenant was last updated (ISO 8601, UTC).
+
+    TenantList:
+      type: object
+      description: Paginated list of tenants.
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tenant'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    Network:
+      type: object
+      description: A private network provisioned for a CloudForge tenant.
+      required: [id, tenantId, region, podCIDR, svcCIDR, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique network identifier.
+        tenantId:
+          type: string
+          format: uuid
+          description: ID of the tenant that owns this network.
+        region:
+          type: string
+          description: Region where the network is provisioned.
+        podCIDR:
+          type: string
+          description: CIDR block allocated for pods, e.g. "10.244.0.0/16".
+        svcCIDR:
+          type: string
+          description: CIDR block allocated for services, e.g. "10.96.0.0/12".
+        status:
+          type: string
+          enum: [provisioning, active, suspended, deleted]
+          description: Current lifecycle state of the network.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the network was created (ISO 8601, UTC).
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the network was last updated (ISO 8601, UTC).
+
+    CreateNetworkRequest:
+      type: object
+      description: Payload for creating a private network for a tenant.
+      required: [region, podCIDR, svcCIDR]
+      properties:
+        region:
+          type: string
+          description: Target region for the new network, e.g. "eu-west-1".
+        podCIDR:
+          type: string
+          description: CIDR block to allocate for pods, e.g. "10.244.0.0/16".
+        svcCIDR:
+          type: string
+          description: CIDR block to allocate for services, e.g. "10.96.0.0/12".
+
+    NetworkList:
+      type: object
+      description: Paginated list of networks.
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Network'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    CredentialMeta:
+      type: object
+      description: >
+        Metadata about an API credential. The raw secret key is never returned
+        after creation — only the prefix (first 8 characters) is stored for
+        identification.
+      required: [id, accountId, prefix, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique credential identifier.
+        accountId:
+          type: string
+          format: uuid
+          description: ID of the account that owns this credential.
+        prefix:
+          type: string
+          description: >
+            First 8 characters of the API key, used for identification in
+            listings and audit logs. Never contains the full secret.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the credential was created (ISO 8601, UTC).
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the credential was revoked. Null if still active.
+
+    CredentialCreated:
+      allOf:
+        - $ref: '#/components/schemas/CredentialMeta'
+      description: >
+        Response body returned only at credential creation. Contains the raw
+        API key in the `secret` field — this is the only time it is returned.
+        The caller must store it securely; it cannot be retrieved again.
+      properties:
+        secret:
+          type: string
+          description: >
+            The full API key. Shown exactly once at creation. Store it
+            securely — CF-Accounts does not store the raw value.
+
+    CredentialList:
+      type: object
+      description: Paginated list of credential metadata records.
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CredentialMeta'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    TenantContext:
+      type: object
+      description: >
+        Resolved tenant context returned to CF-Router. Contains everything
+        needed to route a request to the correct tenant environment.
+      required: [tenantId, accountId, region, status]
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+          description: ID of the resolved tenant.
+        accountId:
+          type: string
+          format: uuid
+          description: ID of the account that owns this tenant.
+        networkId:
+          type: string
+          format: uuid
+          nullable: true
+          description: ID of the tenant's active network, if provisioned.
+        region:
+          type: string
+          description: Region where the tenant is deployed.
+        status:
+          type: string
+          description: Current tenant status, e.g. "active".
+
+    Error:
+      type: object
+      description: Standard error response returned for all 4xx and 5xx responses.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code, e.g. "NOT_FOUND".
+        message:
+          type: string
+          description: Human-readable error description.
+        requestId:
+          type: string
+          description: >
+            Correlation ID from the X-Request-ID header, echoed back for
+            tracing across service boundaries.
+
+  # -------------------------------------------------------------------------
+  # Reusable parameters
+  # -------------------------------------------------------------------------
+  parameters:
+    accountId:
+      name: accountId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique account identifier.
+    tenantId:
+      name: tenantId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique tenant identifier.
+    networkId:
+      name: networkId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique network identifier.
+    keyId:
+      name: keyId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique API credential identifier.
+    limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Maximum number of items to return (1–100, default 20).
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Zero-based offset of the first item to return (default 0).
+
+  # -------------------------------------------------------------------------
+  # Reusable responses
+  # -------------------------------------------------------------------------
+  responses:
+    BadRequest:
+      description: Request payload failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing or invalid authentication credentials.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The caller does not have permission to perform this action.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: The requested resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: A resource with a conflicting unique field already exists.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: An unexpected error occurred inside the service.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+# ---------------------------------------------------------------------------
+# Tag definitions (used for grouping operations in generated docs / SDKs)
+# ---------------------------------------------------------------------------
+tags:
+  - name: Accounts
+    description: Customer account management.
+  - name: Tenants
+    description: Tenant identity and lifecycle.
+  - name: Networks
+    description: Private network provisioning per tenant.
+  - name: Credentials
+    description: API key pair management.
+  - name: Internal
+    description: >
+      Internal service-to-service endpoints. Not accessible from the public
+      internet — protected by the X-CF-Internal-Secret shared header.
+
+# ---------------------------------------------------------------------------
+# Default security — BearerAuth on all public operations
+# ---------------------------------------------------------------------------
+security:
+  - BearerAuth: []
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+paths:
+
+  # ── Accounts ──────────────────────────────────────────────────────────────
+
+  /v1/accounts:
+    post:
+      operationId: createAccount
+      summary: Create a new customer account
+      description: >
+        Registers a new customer account in CF-Accounts. The email address
+        must be unique. Returns the created account with its generated ID.
+      tags: [Accounts]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccountRequest'
+            example:
+              email: "customer@example.com"
+      responses:
+        "201":
+          description: Account created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+              example:
+                id: "a1b2c3d4-0000-0000-0000-000000000001"
+                email: "customer@example.com"
+                status: "active"
+                createdAt: "2026-01-15T10:00:00Z"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      operationId: listAccounts
+      summary: List accounts
+      description: >
+        Returns a paginated list of all customer accounts. Use `limit` and
+        `offset` to page through results.
+      tags: [Accounts]
+      parameters:
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        "200":
+          description: Paginated list of accounts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountList'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/accounts/{accountId}:
+    get:
+      operationId: getAccount
+      summary: Get account by ID
+      description: Returns the full account record for the given account ID.
+      tags: [Accounts]
+      parameters:
+        - $ref: '#/components/parameters/accountId'
+      responses:
+        "200":
+          description: Account found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      operationId: deleteAccount
+      summary: Suspend or delete an account
+      description: >
+        Transitions the account to `suspended` (soft delete). All active
+        tenants and networks are also suspended. Fully deleted accounts
+        cannot be recovered via the API.
+      tags: [Accounts]
+      parameters:
+        - $ref: '#/components/parameters/accountId'
+      responses:
+        "204":
+          description: Account suspended/deleted successfully. No response body.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Tenants ───────────────────────────────────────────────────────────────
+
+  /v1/accounts/{accountId}/tenants:
+    get:
+      operationId: listTenants
+      summary: List tenants for an account
+      description: >
+        Returns a paginated list of all tenants belonging to the given account.
+      tags: [Tenants]
+      parameters:
+        - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        "200":
+          description: Paginated list of tenants.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/tenants/{tenantId}:
+    get:
+      operationId: getTenant
+      summary: Get tenant by ID
+      description: Returns the full tenant record for the given tenant ID.
+      tags: [Tenants]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      responses:
+        "200":
+          description: Tenant found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Private Networks ──────────────────────────────────────────────────────
+
+  /v1/tenants/{tenantId}/networks:
+    post:
+      operationId: createNetwork
+      summary: Create a private network for a tenant
+      description: >
+        Provisions a new private network for the specified tenant. The network
+        is created asynchronously; the initial status is `provisioning`. Poll
+        `GET /v1/networks/{networkId}` until status transitions to `active`.
+      tags: [Networks]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateNetworkRequest'
+            example:
+              region: "eu-west-1"
+              podCIDR: "10.244.0.0/16"
+              svcCIDR: "10.96.0.0/12"
+      responses:
+        "201":
+          description: Network creation accepted; initial status is `provisioning`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Network'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      operationId: listNetworks
+      summary: List networks for a tenant
+      description: Returns a paginated list of all networks belonging to the given tenant.
+      tags: [Networks]
+      parameters:
+        - $ref: '#/components/parameters/tenantId'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        "200":
+          description: Paginated list of networks.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NetworkList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/networks/{networkId}:
+    get:
+      operationId: getNetwork
+      summary: Get network by ID
+      description: Returns the full network record, including current provisioning status.
+      tags: [Networks]
+      parameters:
+        - $ref: '#/components/parameters/networkId'
+      responses:
+        "200":
+          description: Network found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Network'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+    delete:
+      operationId: deleteNetwork
+      summary: Deprovision a network
+      description: >
+        Initiates deprovisioning of the network. Status transitions to
+        `deprovisioning`; the deletion completes asynchronously. Once
+        deleted, the network record is retained with status `deleted` for
+        audit purposes.
+      tags: [Networks]
+      parameters:
+        - $ref: '#/components/parameters/networkId'
+      responses:
+        "204":
+          description: Deprovisioning initiated. No response body.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── API Credentials ───────────────────────────────────────────────────────
+
+  /v1/accounts/{accountId}/credentials:
+    post:
+      operationId: createCredential
+      summary: Create an API key pair
+      description: >
+        Generates a new API key for the account. The raw secret is returned
+        **only in this response** and is not stored by CF-Accounts. The caller
+        must store it securely — it cannot be retrieved again.
+      tags: [Credentials]
+      parameters:
+        - $ref: '#/components/parameters/accountId'
+      responses:
+        "201":
+          description: >
+            API key created. The `secret` field is included only in this
+            response and will never be returned again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialCreated'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+    get:
+      operationId: listCredentials
+      summary: List credential metadata
+      description: >
+        Returns a paginated list of credential metadata for the account. The
+        raw API key secret is **never** included in list or get responses —
+        only the identification prefix and revocation status are shown.
+      tags: [Credentials]
+      parameters:
+        - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/limit'
+        - $ref: '#/components/parameters/offset'
+      responses:
+        "200":
+          description: Paginated list of credential metadata (no secrets).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CredentialList'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  /v1/accounts/{accountId}/credentials/{keyId}:
+    delete:
+      operationId: revokeCredential
+      summary: Revoke an API key
+      description: >
+        Permanently revokes the API key. Any subsequent requests authenticated
+        with this key will receive a 401 response. Revocation is immediate and
+        irreversible.
+      tags: [Credentials]
+      parameters:
+        - $ref: '#/components/parameters/accountId'
+        - $ref: '#/components/parameters/keyId'
+      responses:
+        "204":
+          description: Credential revoked. No response body.
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
+  # ── Internal — Tenant Resolution ──────────────────────────────────────────
+
+  /internal/v1/resolve:
+    get:
+      operationId: resolveTenant
+      summary: Resolve tenant context from account ID or API key hash
+      description: >
+        Internal endpoint used exclusively by CF-Router to resolve a tenant
+        context from either an account ID or a BLAKE2b-256 hash of an API key.
+        Returns everything CF-Router needs to forward the request to the
+        correct tenant vCluster.
+
+        **This endpoint is not protected by BearerAuth.** It uses a shared
+        internal secret passed via the `X-CF-Internal-Secret` header. It must
+        never be exposed outside the service mesh.
+      tags: [Internal]
+      security:
+        - InternalSecret: []
+      parameters:
+        - name: accountId
+          in: query
+          required: false
+          schema:
+            type: string
+            format: uuid
+          description: >
+            Resolve by account ID. Exactly one of `accountId` or `apiKeyHash`
+            must be provided.
+        - name: apiKeyHash
+          in: query
+          required: false
+          schema:
+            type: string
+          description: >
+            BLAKE2b-256 hex digest of the API key. Exactly one of `accountId`
+            or `apiKeyHash` must be provided.
+      responses:
+        "200":
+          description: Tenant context resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantContext'
+              example:
+                tenantId: "c1b2c3d4-0000-0000-0000-000000000001"
+                accountId: "a1b2c3d4-0000-0000-0000-000000000001"
+                networkId: "d1b2c3d4-0000-0000-0000-000000000001"
+                region: "eu-west-1"
+                status: "active"
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
