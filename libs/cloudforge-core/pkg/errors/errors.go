@@ -52,6 +52,19 @@ func Wrap(code Code, message string, cause error) *CFError {
 	return &CFError{code: code, message: message, cause: cause}
 }
 
+// Wrapf wraps sentinel with a printf-style message carrying runtime context.
+// The code is inherited from sentinel so callers never repeat it.
+// The returned error satisfies errors.Is(err, sentinel) because sentinel is
+// placed in the cause chain.
+//
+// Use this whenever a sentinel error needs runtime values in its message:
+//
+//	return cferrors.Wrapf(ErrNotFound, "tenant %s does not exist", id)
+//	return cferrors.Wrapf(ErrUnavailable, "host %s unreachable: %v", host, err)
+func Wrapf(sentinel *CFError, format string, args ...any) *CFError {
+	return Wrap(sentinel.Code(), fmt.Sprintf(format, args...), sentinel)
+}
+
 // Code returns the machine-readable error classification.
 func (e *CFError) Code() Code { return e.code }
 
