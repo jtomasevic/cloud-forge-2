@@ -122,41 +122,59 @@ To regenerate the mocks after changing the `SecretsClient` interface, run:
 make generate
 ```
 
-## Integration tests
+## Testing
 
-Tests that require a live OpenBao instance are tagged with `//go:build integration` and are skipped by default. To run them:
+### Unit tests (no live OpenBao required)
 
-```bash
-OPENBAO_ADDR=http://localhost:8200 OPENBAO_TOKEN=root \
-  go test -tags=integration ./...
-```
-
-A local OpenBao instance can be started with Docker:
+The full test suite runs without any infrastructure using gomock:
 
 ```bash
-docker run --rm -p 8200:8200 \
-  -e OPENBAO_DEV_ROOT_TOKEN_ID=root \
-  ghcr.io/openbao/openbao:latest server -dev
+make test            # unit tests with -race
+make coverage        # per-function coverage report
 ```
+
+### Integration tests
+
+Integration tests use [testcontainers-go](https://testcontainers.com/guides/getting-started-with-testcontainers-for-go/)
+to spin up a `hashicorp/vault:1.15.6` dev-mode container automatically.
+The Vault API is wire-compatible with the OpenBao SDK. Docker must be running.
+
+```bash
+make integration-test
+```
+
+The container is started **once for the package** (`TestMain`) with:
+- root token fixed to `root`
+- KV v1 mount at `secret/` (matches `kubeconfigPathPrefix`)
+- dev mode — no TLS, no persistence, unsealed automatically
+
+#### Using an existing OpenBao/Vault instance
+
+Set `OPENBAO_ADDR` and `OPENBAO_TOKEN` to bypass container creation (useful
+in CI with a dedicated service container):
+
+```bash
+OPENBAO_ADDR=http://localhost:8200 OPENBAO_TOKEN=root make integration-test
+```
+
+#### What the integration tests cover
+
+| File | Tests |
+|------|-------|
+| `client_integration_test.go` | `New` connects; `Write/Read` round-trip; overwrite; read missing path → `ErrSecretNotFound`; `Delete` removes secret; delete non-existent succeeds; `List` returns keys; list empty prefix returns `[]` |
+| `kubeconfig_integration_test.go` | `StoreKubeconfig/LoadKubeconfig` round-trip; overwrite; load missing → `ErrSecretNotFound`; `RevokeKubeconfig` removes; revoke non-existent succeeds; full store→load→revoke lifecycle |
 
 ## Development
 
 ```bash
-# Build
-make build
-
-# Run unit tests (no OpenBao required)
-make test
-
-# Run tests with coverage report
-make coverage
-
-# Regenerate gomock mocks
-make generate
-
-# Format and vet
-make lint
-
-# Tidy go.mod / go.sum
-make tidy
+make build              # compile all packages
+make test               # run unit tests with -race
+make coverage           # per-function coverage report
+make coverage-html      # open HTML coverage in browser
+make integration-test   # run integration tests (Docker required)
+make generate           # regenerate gomock mocks
+make lint               # go vet (+ golangci-lint if available)
+make tidy               # go mod tidy
+make clean              # remove coverage artefacts
+make help               # list all targets
 ```

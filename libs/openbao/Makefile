@@ -1,7 +1,10 @@
-.PHONY: build test coverage coverage-html generate lint tidy clean
+.PHONY: build test coverage coverage-html integration-test generate lint tidy clean
 
-# Source packages to measure (excludes generated mock code)
+# Source packages to measure (excludes generated mock code).
 SOURCE_PKGS := ./pkg/client
+
+# All packages that have integration tests.
+INTEGRATION_PKGS := ./pkg/client
 
 ## build: compile the module and all sub-packages
 build:
@@ -23,6 +26,14 @@ coverage:
 coverage-html: coverage
 	go tool cover -html=coverage.out
 
+## integration-test: run integration tests (starts OpenBao via testcontainers-go)
+## Set OPENBAO_ADDR=http://host:8200 and OPENBAO_TOKEN=<token> to use an existing instance.
+integration-test:
+	go test $(INTEGRATION_PKGS) \
+		-tags integration \
+		-race -count=1 -v \
+		-timeout 3m
+
 ## generate: regenerate gomock mocks from the current interface definitions
 generate:
 	go generate ./...
@@ -42,7 +53,7 @@ tidy:
 
 ## clean: remove build artefacts
 clean:
-	rm -f coverage.out
+	rm -f coverage.out integration_coverage.out
 
 ## help: list available targets
 help:
