@@ -64,10 +64,16 @@ func New(_ context.Context, cfg Config) (*Session, error) {
 
 	inner, err := cluster.CreateSession()
 	if err != nil {
-		return nil, cferrors.Wrap(cferrors.CodeUnavailable, "scylladb connection failed", err)
+		return nil, cferrors.Wrapf(ErrConnectionFailed, "hosts %v: %v", cfg.Hosts, err)
 	}
 
 	return &Session{inner: inner}, nil
+}
+
+// newWithInner creates a Session from an existing *gocql.Session.
+// Intended for integration tests that manage their own connection lifecycle.
+func newWithInner(inner *gocql.Session) *Session {
+	return &Session{inner: inner}
 }
 
 // Query returns a gocql.Query for the given CQL statement and bound values.
@@ -87,6 +93,28 @@ func (s *Session) ExecCQL(ctx context.Context, stmt string) error {
 // list already-applied migration filenames.
 func (s *Session) SelectStrings(ctx context.Context, stmt string) ([]string, error) {
 	iter := s.inner.Query(stmt).WithContext(ctx).Iter()
+	return scanStringIter(iter)
+}
+
+// Close releases all resources held by the session. It is safe to call
+// multiple times.
+func (s *Session) Close() {
+	s.inner.Close()
+}
+
+// gocqlIter is the minimal interface from *gocql.Iter needed to scan a
+// single-column TEXT result set. Extracted so scanStringIter can be unit-tested
+// without a live ScyllaDB connection.
+type gocqlIter interface {
+	Scan(dest ...interface{}) bool
+	Close() error
+}
+
+// scanStringIter reads every row from iter, collecting the single TEXT column
+// value into a slice. Returns any error reported by iter.Close().
+// The caller is responsible for creating the iterator from a live session;
+// this function contains all the scan logic and is fully unit-testable.
+func scanStringIter(iter gocqlIter) ([]string, error) {
 	var results []string
 	var val string
 	for iter.Scan(&val) {
@@ -96,10 +124,4 @@ func (s *Session) SelectStrings(ctx context.Context, stmt string) ([]string, err
 		return nil, err
 	}
 	return results, nil
-}
-
-// Close releases all resources held by the session. It is safe to call
-// multiple times.
-func (s *Session) Close() {
-	s.inner.Close()
 }

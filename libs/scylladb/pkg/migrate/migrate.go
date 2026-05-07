@@ -93,10 +93,6 @@ func RunMigrations(ctx context.Context, cfg MigrationConfig) error {
 
 		statements := splitStatements(string(content))
 		for _, stmt := range statements {
-			stmt = strings.TrimSpace(stmt)
-			if stmt == "" {
-				continue
-			}
 			if err := cfg.Session.ExecCQL(ctx, stmt); err != nil {
 				return cferrors.Wrap(cferrors.CodeInternal,
 					fmt.Sprintf("failed to apply migration %s", filename), err)

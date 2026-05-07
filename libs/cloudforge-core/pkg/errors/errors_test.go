@@ -55,6 +55,38 @@ func TestErrorOutput(t *testing.T) {
 	}
 }
 
+func TestWrapf(t *testing.T) {
+	sentinel := cferrors.ErrNotFound
+	err := cferrors.Wrapf(sentinel, "tenant %s does not exist", "t-123")
+
+	if err.Code() != cferrors.CodeNotFound {
+		t.Errorf("expected code %q, got %q", cferrors.CodeNotFound, err.Code())
+	}
+	if err.Error() != "[NOT_FOUND] tenant t-123 does not exist" {
+		t.Errorf("unexpected message: %q", err.Error())
+	}
+	if !errors.Is(err, sentinel) {
+		t.Error("errors.Is(err, sentinel) should be true — sentinel is in the cause chain")
+	}
+}
+
+func TestWrapf_InheritsCodeFromSentinel(t *testing.T) {
+	for _, sentinel := range []*cferrors.CFError{
+		cferrors.ErrNotFound,
+		cferrors.ErrForbidden,
+		cferrors.ErrUnavailable,
+		cferrors.ErrInternal,
+	} {
+		err := cferrors.Wrapf(sentinel, "host %s failed", "localhost")
+		if err.Code() != sentinel.Code() {
+			t.Errorf("Wrapf: code mismatch — got %q, want %q", err.Code(), sentinel.Code())
+		}
+		if !errors.Is(err, sentinel) {
+			t.Errorf("errors.Is should match sentinel %q", sentinel.Code())
+		}
+	}
+}
+
 func TestIs_SentinelMatchByCode(t *testing.T) {
 	// A wrapped error with the same code as a sentinel must match via errors.Is.
 	wrapped := cferrors.Wrap(cferrors.CodeNotFound, "account not found", fmt.Errorf("db miss"))

@@ -195,6 +195,7 @@ func TestRunMigrations_MultiStatementFile(t *testing.T) {
 }
 
 func TestRunMigrations_ReturnsErrorWhenExecFails(t *testing.T) {
+	// ExecCQL fails immediately (on the CREATE TABLE schema_migrations call).
 	dir := t.TempDir()
 	writeCQL(t, dir, "001_a.cql", "CREATE TABLE IF NOT EXISTS a (id UUID PRIMARY KEY)")
 
@@ -219,6 +220,93 @@ func TestRunMigrations_ReturnsErrorWhenSelectFails(t *testing.T) {
 	})
 	if err == nil {
 		t.Error("expected an error when SelectStrings fails")
+	}
+}
+
+func TestRunMigrations_ReturnsErrorForNonExistentScriptsDir(t *testing.T) {
+	// os.ReadDir fails when the directory does not exist.
+	q := &fakeQuerier{}
+	err := migrate.RunMigrations(context.Background(), migrate.MigrationConfig{
+		Session:    q,
+		ScriptsDir: "/nonexistent/path/to/migrations",
+	})
+	if err == nil {
+		t.Error("expected an error for non-existent scripts directory")
+	}
+}
+
+func TestRunMigrations_ReturnsErrorWhenFileUnreadable(t *testing.T) {
+	// os.ReadFile fails when a .cql entry in the directory is a broken symlink.
+	// ReadDir will include it, but ReadFile will fail to open the target.
+	dir := t.TempDir()
+	brokenLink := filepath.Join(dir, "001_broken.cql")
+	if err := os.Symlink("/nonexistent/target.cql", brokenLink); err != nil {
+		t.Skipf("symlink not supported on this platform: %v", err)
+	}
+
+	q := &fakeQuerier{}
+	err := migrate.RunMigrations(context.Background(), migrate.MigrationConfig{
+		Session:    q,
+		ScriptsDir: dir,
+	})
+	if err == nil {
+		t.Error("expected an error for unreadable migration file")
+	}
+}
+
+// callLimitQuerier succeeds on ExecCQL for the first succeedFor calls, then
+// returns laterErr. This lets tests target specific steps in the migration loop.
+type callLimitQuerier struct {
+	applied    []string
+	execCalls  []string
+	succeedFor int
+	laterErr   error
+}
+
+func (f *callLimitQuerier) ExecCQL(_ context.Context, stmt string) error {
+	if len(f.execCalls) >= f.succeedFor {
+		return f.laterErr
+	}
+	f.execCalls = append(f.execCalls, stmt)
+	return nil
+}
+
+func (f *callLimitQuerier) SelectStrings(_ context.Context, _ string) ([]string, error) {
+	return f.applied, nil
+}
+
+func TestRunMigrations_ReturnsErrorWhenApplyMigrationFails(t *testing.T) {
+	// ExecCQL call sequence for a single-statement file:
+	//   call 1: CREATE TABLE schema_migrations  → success
+	//   call 2: migration statement              → fail  (covered path)
+	dir := t.TempDir()
+	writeCQL(t, dir, "001_a.cql", "CREATE TABLE IF NOT EXISTS a (id UUID PRIMARY KEY)")
+
+	q := &callLimitQuerier{succeedFor: 1, laterErr: errors.New("write timeout")}
+	err := migrate.RunMigrations(context.Background(), migrate.MigrationConfig{
+		Session:    q,
+		ScriptsDir: dir,
+	})
+	if err == nil {
+		t.Error("expected an error when applying the migration statement fails")
+	}
+}
+
+func TestRunMigrations_ReturnsErrorWhenRecordingMigrationFails(t *testing.T) {
+	// ExecCQL call sequence for a single-statement file:
+	//   call 1: CREATE TABLE schema_migrations  → success
+	//   call 2: migration statement              → success
+	//   call 3: INSERT INTO schema_migrations    → fail  (covered path)
+	dir := t.TempDir()
+	writeCQL(t, dir, "001_a.cql", "CREATE TABLE IF NOT EXISTS a (id UUID PRIMARY KEY)")
+
+	q := &callLimitQuerier{succeedFor: 2, laterErr: errors.New("write timeout")}
+	err := migrate.RunMigrations(context.Background(), migrate.MigrationConfig{
+		Session:    q,
+		ScriptsDir: dir,
+	})
+	if err == nil {
+		t.Error("expected an error when recording the migration in schema_migrations fails")
 	}
 }
 
