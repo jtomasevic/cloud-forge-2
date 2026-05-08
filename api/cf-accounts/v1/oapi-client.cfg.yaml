@@ -1,0 +1,5 @@
+package: cfaccountsclient
+generate:
+  client: true
+  models: true
+output: ../../../libs/clients/cf-accounts/v1/client.gen.go
