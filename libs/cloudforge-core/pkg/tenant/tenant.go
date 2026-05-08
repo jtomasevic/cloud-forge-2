@@ -22,11 +22,12 @@ const (
 )
 
 // Tenant is the canonical shared tenant model.
+// Region is intentionally absent: a tenant may own networks in multiple
+// regions, so region is a property of Network, not of Tenant.
 type Tenant struct {
 	ID        string
 	AccountID string
 	Slug      string
-	Region    string
 	Status    TenantStatus
 	CreatedAt time.Time
 	UpdatedAt time.Time
