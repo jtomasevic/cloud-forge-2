@@ -100,8 +100,11 @@ components:
 
     Tenant:
       type: object
-      description: A CloudForge tenant — an isolated workload environment within an account.
-      required: [id, accountId, slug, region, status, createdAt]
+      description: >
+        A CloudForge tenant — an isolated workload environment within an account.
+        Region is not a tenant-level attribute: a tenant may own networks in
+        multiple regions. Region is carried by each Network resource instead.
+      required: [id, accountId, slug, status, createdAt]
       properties:
         id:
           type: string
@@ -118,9 +121,6 @@ components:
             Human-readable, URL-safe identifier for the tenant. Must be
             unique within the account. Lowercase letters, digits and hyphens
             only; 3–63 characters.
-        region:
-          type: string
-          description: Deployment region, e.g. "eu-west-1".
         status:
           type: string
           enum: [provisioning, active, suspended, deprovisioning, deprovisioned]
@@ -280,9 +280,11 @@ components:
     TenantContext:
       type: object
       description: >
-        Resolved tenant context returned to CF-Router. Contains everything
-        needed to route a request to the correct tenant environment.
-      required: [tenantId, accountId, region, status]
+        Resolved tenant context returned to CF-Router. Contains the tenant and
+        account IDs plus the ID of the network to route the request through.
+        Region is not included here — CF-Router derives it from the Network
+        record identified by networkId.
+      required: [tenantId, accountId, status]
       properties:
         tenantId:
           type: string
@@ -296,10 +298,10 @@ components:
           type: string
           format: uuid
           nullable: true
-          description: ID of the tenant's active network, if provisioned.
-        region:
-          type: string
-          description: Region where the tenant is deployed.
+          description: >
+            ID of the tenant's active network. CF-Router uses this to look up
+            the network's region and forward the request to the correct
+            vCluster. Null when no active network is provisioned.
         status:
           type: string
           description: Current tenant status, e.g. "active".
@@ -857,7 +859,6 @@ paths:
                 tenantId: "c1b2c3d4-0000-0000-0000-000000000001"
                 accountId: "a1b2c3d4-0000-0000-0000-000000000001"
                 networkId: "d1b2c3d4-0000-0000-0000-000000000001"
-                region: "eu-west-1"
                 status: "active"
         "400":
           $ref: '#/components/responses/BadRequest'
