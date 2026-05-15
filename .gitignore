@@ -35,5 +35,6 @@ tools/bin/
 # Editor/IDE
 .idea/
 .vscode/
+.DS_Store
 
 spec/
