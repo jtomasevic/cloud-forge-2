@@ -20,7 +20,7 @@ Each subfolder is a **separate Go package** with **no imports** between subfolde
 
 | Package | Responsibility |
 |---------|------------------|
-| [`accounts/`](accounts/) | `accounts`, `accounts_by_email` |
+| [`accounts/`](accounts/) | `accounts` (incl. `password_hash` bcrypt), `accounts_by_email` |
 | [`tenants/`](tenants/) | `tenants`, `tenants_by_account`, `tenants_by_slug` |
 | [`networks/`](networks/) | `networks`, `networks_by_tenant` |
 | [`credentials/`](credentials/) | `api_keys`, `api_keys_by_account`, `api_keys_by_hash` |

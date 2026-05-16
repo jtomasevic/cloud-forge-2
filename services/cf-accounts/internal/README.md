@@ -22,8 +22,9 @@ HTTP request
 ┌─────────────────────────────┐
 │       Service layer         │  internal/service/
 │  api.go      service.go     │  All business logic lives here.
-│  models.go   errors.go      │  Coordinates one or more repositories.
-│  models_transform.go        │  Owns transaction / session boundaries.
+│  models.go   password.go    │  Coordinates one or more repositories.
+│  errors.go                  │  Owns transaction / session boundaries.
+│  models_transform.go        │
 └──────┬──────────────┬───────┘
        │              │  repository-layer models only
        ▼              ▼
@@ -61,12 +62,14 @@ Rules:
 | `api.go` | Public interface + `New(Deps)` constructor |
 | `service.go` | Concrete implementation (`CFAccountsService`) |
 | `models.go` | Service-level models |
+| `password.go` | Password policy validation and bcrypt hashing / comparison helpers |
 | `models_transform.go` | Maps service ↔ repository models when needed |
 | `errors.go` | Service-level typed errors |
 
 Rules:
 - Business logic only — no HTTP types, no raw DB types.
 - The service coordinates repositories; handlers do not.
+- **Passwords**: plaintext passwords exist only on the service boundary (`CreateAccountParams`, `LoginWithPasswordParams`). They are validated, hashed with **bcrypt** (`golang.org/x/crypto/bcrypt`), and persisted as `password_hash` via the accounts repository. The public `Account` model never carries a password or hash.
 - The concrete struct is named `CF<InterfaceName>` (e.g. `CFAccountsService`).
 - `New()` returns the interface type, never the concrete type.
 
@@ -115,16 +118,20 @@ POST /v1/accounts
   │
   ▼ handler.CreateAccount(ctx, req)
       validates + maps CreateAccountJSONBody → service.CreateAccountParams
-      calls AccountService.CreateAccount(ctx, params)
+        (email + password; password is write-only in OpenAPI)
+      calls AccountsService.CreateAccount(ctx, params)
         │
         ▼ service.CreateAccount(ctx, params)
-            checks email uniqueness via accountRepo.ExistsByEmail(ctx, email)
-            creates Account model
-            calls accountRepo.Insert(ctx, account)
-            returns service.Account{}
+            validates email + password length (see password.go)
+            checks email not already registered (accountsRepo.GetByEmail)
+            bcrypt-hashes password → password_hash
+            inserts account row (accountsRepo.Insert)
+            derives default tenant slug from email local part; ensures uniqueness (tenantsRepo.GetBySlug loop)
+            inserts default tenant row in "provisioning" (tenantsRepo.Insert)
+            returns service.CreateAccountResult{ Account, DefaultTenant }
         │
-      maps service.Account → generated.Account (REST model)
-      writes HTTP 201 + JSON body
+      maps CreateAccountResult → generated.CreateAccount201JSONResponse
+      writes HTTP 201 + JSON body (account + defaultTenant)
 ```
 
 The handler never calls `accountRepo` directly.
@@ -132,7 +139,36 @@ The service never writes to `http.ResponseWriter`.
 
 ---
 
-## Regenerating server stubs
+## Example: `LoginWithPassword`
+
+```
+POST /v1/auth/login   (OpenAPI: no BearerAuth — security: [])
+  │
+  ▼ handler.LoginWithPassword(ctx, req)
+      maps body → service.LoginWithPasswordParams
+      calls AccountsService.LoginWithPassword(ctx, params)
+        │
+        ▼ service.LoginWithPassword
+            loads account by email (accountsRepo.GetByEmail; row includes password_hash)
+            rejects if missing hash, inactive account, or bcrypt compare fails
+            on mismatch uses ErrInvalidCredentials (same sentinel for unknown email)
+            returns service.Account on success
+        │
+      maps Account → JSON; 401 on ErrInvalidCredentials
+```
+
+---
+
+## OpenAPI alignment (service ↔ spec)
+
+| Concern | Spec / generated | Service |
+|--------|-------------------|---------|
+| Signup body | `CreateAccountRequest` (`email`, `password`) | `CreateAccountParams` |
+| Signup response | `CreateAccountResult` (`account`, `defaultTenant`) | `CreateAccountResult` |
+| Login body | `LoginRequest` | `LoginWithPasswordParams` |
+| Login response | `Account` | `Account` |
+
+Regenerate stubs after changing `api/cf-accounts/v1/openapi.yaml`:
 
 ```bash
 # from services/cf-accounts/
@@ -140,5 +176,6 @@ go generate ./...
 ```
 
 This re-runs `oapi-codegen` against `api/cf-accounts/v1/openapi.yaml` and
-overwrites `internal/rest/generated/server.gen.go`.
+overwrites `internal/rest/generated/server.gen.go` (and the public client under
+`libs/clients/cf-accounts/`).
 See `internal/rest/generated/README.md` for the full `StrictServerInterface`.
