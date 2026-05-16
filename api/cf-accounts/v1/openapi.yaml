@@ -72,12 +72,48 @@ components:
     CreateAccountRequest:
       type: object
       description: Payload for creating a new customer account.
-      required: [email]
+      required: [email, password]
       properties:
         email:
           type: string
           format: email
           description: Primary contact e-mail. Must be unique across all accounts.
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 8
+          maxLength: 72
+          description: >
+            Account password. CF-Accounts stores only a bcrypt hash; the plaintext
+            value is never written to the database or returned by the API.
+
+    CreateAccountResult:
+      type: object
+      description: >
+        Returned when signup succeeds. Includes the default tenant created with
+        the account so clients receive tenant id and slug without calling list tenants.
+      required: [account, defaultTenant]
+      properties:
+        account:
+          $ref: '#/components/schemas/Account'
+        defaultTenant:
+          $ref: '#/components/schemas/Tenant'
+
+    LoginRequest:
+      type: object
+      description: Credentials for password-based login (CLI and API clients).
+      required: [email, password]
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 1
+          maxLength: 72
 
     AccountList:
       type: object
@@ -424,6 +460,8 @@ components:
 # Tag definitions (used for grouping operations in generated docs / SDKs)
 # ---------------------------------------------------------------------------
 tags:
+  - name: Auth
+    description: Email and password authentication.
   - name: Accounts
     description: Customer account management.
   - name: Tenants
@@ -448,6 +486,38 @@ security:
 # ---------------------------------------------------------------------------
 paths:
 
+  # ── Authentication ─────────────────────────────────────────────────────
+
+  /v1/auth/login:
+    post:
+      operationId: loginWithPassword
+      summary: Log in with email and password
+      description: >
+        Verifies the email and password against the stored bcrypt hash and returns
+        the account on success. On failure the response is generic (401) so
+        callers cannot distinguish unknown emails from wrong passwords.
+      tags: [Auth]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        "200":
+          description: Login succeeded; returns the authenticated account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Account'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "500":
+          $ref: '#/components/responses/InternalServerError'
+
   # ── Accounts ──────────────────────────────────────────────────────────────
 
   /v1/accounts:
@@ -456,7 +526,8 @@ paths:
       summary: Create a new customer account
       description: >
         Registers a new customer account in CF-Accounts. The email address
-        must be unique. Returns the created account with its generated ID.
+        must be unique. Returns the created account and the default tenant
+        (id, slug, status) provisioned at signup.
       tags: [Accounts]
       requestBody:
         required: true
@@ -466,18 +537,26 @@ paths:
               $ref: '#/components/schemas/CreateAccountRequest'
             example:
               email: "customer@example.com"
+              password: "correct horse battery staple"
       responses:
         "201":
-          description: Account created successfully.
+          description: Account and default tenant created successfully.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Account'
+                $ref: '#/components/schemas/CreateAccountResult'
               example:
-                id: "a1b2c3d4-0000-0000-0000-000000000001"
-                email: "customer@example.com"
-                status: "active"
-                createdAt: "2026-01-15T10:00:00Z"
+                account:
+                  id: "a1b2c3d4-0000-0000-0000-000000000001"
+                  email: "customer@example.com"
+                  status: "active"
+                  createdAt: "2026-01-15T10:00:00Z"
+                defaultTenant:
+                  id: "b1b2c3d4-0000-0000-0000-000000000001"
+                  accountId: "a1b2c3d4-0000-0000-0000-000000000001"
+                  slug: "customer"
+                  status: "provisioning"
+                  createdAt: "2026-01-15T10:00:00Z"
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":

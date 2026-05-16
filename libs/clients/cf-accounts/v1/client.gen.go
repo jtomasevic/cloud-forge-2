@@ -86,6 +86,18 @@ type AccountList struct {
 type CreateAccountRequest struct {
 	// Email Primary contact e-mail. Must be unique across all accounts.
 	Email openapi_types.Email `json:"email"`
+
+	// Password Account password. CF-Accounts stores only a bcrypt hash; the plaintext value is never written to the database or returned by the API.
+	Password *string `json:"password,omitempty"`
+}
+
+// CreateAccountResult Returned when signup succeeds. Includes the default tenant created with the account so clients receive tenant id and slug without calling list tenants.
+type CreateAccountResult struct {
+	// Account A CloudForge customer account.
+	Account Account `json:"account"`
+
+	// DefaultTenant A CloudForge tenant — an isolated workload environment within an account. Region is not a tenant-level attribute: a tenant may own networks in multiple regions. Region is carried by each Network resource instead.
+	DefaultTenant Tenant `json:"defaultTenant"`
 }
 
 // CreateNetworkRequest Payload for creating a private network for a tenant.
@@ -139,6 +151,12 @@ type Error struct {
 
 	// RequestId Correlation ID from the X-Request-ID header, echoed back for tracing across service boundaries.
 	RequestId *string `json:"requestId,omitempty"`
+}
+
+// LoginRequest Credentials for password-based login (CLI and API clients).
+type LoginRequest struct {
+	Email    openapi_types.Email `json:"email"`
+	Password *string             `json:"password,omitempty"`
 }
 
 // Network A private network provisioned for a CloudForge tenant.
@@ -310,6 +328,9 @@ type ListNetworksParams struct {
 // CreateAccountJSONRequestBody defines body for CreateAccount for application/json ContentType.
 type CreateAccountJSONRequestBody = CreateAccountRequest
 
+// LoginWithPasswordJSONRequestBody defines body for LoginWithPassword for application/json ContentType.
+type LoginWithPasswordJSONRequestBody = LoginRequest
+
 // CreateNetworkJSONRequestBody defines body for CreateNetwork for application/json ContentType.
 type CreateNetworkJSONRequestBody = CreateNetworkRequest
 
@@ -414,6 +435,11 @@ type ClientInterface interface {
 
 	// ListTenants request
 	ListTenants(ctx context.Context, accountId AccountId, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// LoginWithPasswordWithBody request with any body
+	LoginWithPasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	LoginWithPassword(ctx context.Context, body LoginWithPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteNetwork request
 	DeleteNetwork(ctx context.Context, networkId NetworkId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -543,6 +569,30 @@ func (c *Client) RevokeCredential(ctx context.Context, accountId AccountId, keyI
 
 func (c *Client) ListTenants(ctx context.Context, accountId AccountId, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListTenantsRequest(c.Server, accountId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) LoginWithPasswordWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLoginWithPasswordRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) LoginWithPassword(ctx context.Context, body LoginWithPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewLoginWithPasswordRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -1082,6 +1132,46 @@ func NewListTenantsRequest(server string, accountId AccountId, params *ListTenan
 	return req, nil
 }
 
+// NewLoginWithPasswordRequest calls the generic LoginWithPassword builder with application/json body
+func NewLoginWithPasswordRequest(server string, body LoginWithPasswordJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewLoginWithPasswordRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewLoginWithPasswordRequestWithBody generates requests for LoginWithPassword with any type of body
+func NewLoginWithPasswordRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/auth/login")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteNetworkRequest generates requests for DeleteNetwork
 func NewDeleteNetworkRequest(server string, networkId NetworkId) (*http.Request, error) {
 	var err error
@@ -1375,6 +1465,11 @@ type ClientWithResponsesInterface interface {
 	// ListTenantsWithResponse request
 	ListTenantsWithResponse(ctx context.Context, accountId AccountId, params *ListTenantsParams, reqEditors ...RequestEditorFn) (*ListTenantsResponse, error)
 
+	// LoginWithPasswordWithBodyWithResponse request with any body
+	LoginWithPasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginWithPasswordResponse, error)
+
+	LoginWithPasswordWithResponse(ctx context.Context, body LoginWithPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginWithPasswordResponse, error)
+
 	// DeleteNetworkWithResponse request
 	DeleteNetworkWithResponse(ctx context.Context, networkId NetworkId, reqEditors ...RequestEditorFn) (*DeleteNetworkResponse, error)
 
@@ -1448,7 +1543,7 @@ func (r ListAccountsResponse) StatusCode() int {
 type CreateAccountResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *Account
+	JSON201      *CreateAccountResult
 	JSON400      *BadRequest
 	JSON401      *Unauthorized
 	JSON403      *Forbidden
@@ -1620,6 +1715,31 @@ func (r ListTenantsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListTenantsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type LoginWithPasswordResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Account
+	JSON400      *BadRequest
+	JSON401      *Unauthorized
+	JSON500      *InternalServerError
+}
+
+// Status returns HTTPResponse.Status
+func (r LoginWithPasswordResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r LoginWithPasswordResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -1846,6 +1966,23 @@ func (c *ClientWithResponses) ListTenantsWithResponse(ctx context.Context, accou
 	return ParseListTenantsResponse(rsp)
 }
 
+// LoginWithPasswordWithBodyWithResponse request with arbitrary body returning *LoginWithPasswordResponse
+func (c *ClientWithResponses) LoginWithPasswordWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*LoginWithPasswordResponse, error) {
+	rsp, err := c.LoginWithPasswordWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLoginWithPasswordResponse(rsp)
+}
+
+func (c *ClientWithResponses) LoginWithPasswordWithResponse(ctx context.Context, body LoginWithPasswordJSONRequestBody, reqEditors ...RequestEditorFn) (*LoginWithPasswordResponse, error) {
+	rsp, err := c.LoginWithPassword(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseLoginWithPasswordResponse(rsp)
+}
+
 // DeleteNetworkWithResponse request returning *DeleteNetworkResponse
 func (c *ClientWithResponses) DeleteNetworkWithResponse(ctx context.Context, networkId NetworkId, reqEditors ...RequestEditorFn) (*DeleteNetworkResponse, error) {
 	rsp, err := c.DeleteNetwork(ctx, networkId, reqEditors...)
@@ -2022,7 +2159,7 @@ func ParseCreateAccountResponse(rsp *http.Response) (*CreateAccountResponse, err
 
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest Account
+		var dest CreateAccountResult
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -2365,6 +2502,53 @@ func ParseListTenantsResponse(rsp *http.Response) (*ListTenantsResponse, error) 
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseLoginWithPasswordResponse parses an HTTP response from a LoginWithPasswordWithResponse call
+func ParseLoginWithPasswordResponse(rsp *http.Response) (*LoginWithPasswordResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &LoginWithPasswordResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Account
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError

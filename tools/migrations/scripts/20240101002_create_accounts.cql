@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     id UUID PRIMARY KEY,
     email TEXT,
     status TEXT,
+    password_hash TEXT,
     created_at TIMESTAMP,
     updated_at TIMESTAMP
 );

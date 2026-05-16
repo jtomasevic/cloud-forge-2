@@ -19,7 +19,7 @@ type accountsRepository struct {
 
 func (r *accountsRepository) Insert(ctx context.Context, row AccountRow) error {
 	if err := r.session.Query(cqlInsertAccount,
-		row.ID, row.Email, row.Status, row.CreatedAt, row.UpdatedAt,
+		row.ID, row.Email, row.Status, row.PasswordHash, row.CreatedAt, row.UpdatedAt,
 	).WithContext(ctx).Exec(); err != nil {
 		return mapInsertErr(err, ErrAccountExists)
 	}
@@ -36,7 +36,7 @@ func (r *accountsRepository) GetByID(ctx context.Context, id string) (AccountRow
 	}
 	var row AccountRow
 	if err := r.session.Query(cqlSelectAccountByID, u).WithContext(ctx).Scan(
-		&row.ID, &row.Email, &row.Status, &row.CreatedAt, &row.UpdatedAt,
+		&row.ID, &row.Email, &row.Status, &row.PasswordHash, &row.CreatedAt, &row.UpdatedAt,
 	); err != nil {
 		return AccountRow{}, mapScanErr(err, ErrAccountNotFound)
 	}
@@ -73,7 +73,7 @@ func (r *accountsRepository) List(ctx context.Context, limit, offset int) ([]Acc
 	iter := r.session.Query(cqlSelectAccountsList, fetch).WithContext(ctx).Iter()
 	var buf []AccountRow
 	var row AccountRow
-	for iter.Scan(&row.ID, &row.Email, &row.Status, &row.CreatedAt, &row.UpdatedAt) {
+	for iter.Scan(&row.ID, &row.Email, &row.Status, &row.PasswordHash, &row.CreatedAt, &row.UpdatedAt) {
 		buf = append(buf, row)
 	}
 	if err := iter.Close(); err != nil {
