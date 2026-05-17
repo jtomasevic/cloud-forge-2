@@ -4,8 +4,10 @@ go 1.26.0
 
 require (
 	github.com/getkin/kin-openapi v0.138.0
+	github.com/gocql/gocql v1.7.0
 	github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core v0.0.0-20260517020151-3de2d2080534
 	github.com/jtomasevic/cloud-forge-2/libs/openbao v0.0.0-20260517020151-3de2d2080534
+	github.com/jtomasevic/cloud-forge-2/libs/scylladb v0.0.0-00010101000000-000000000000
 	github.com/oapi-codegen/runtime v1.4.0
 	go.uber.org/mock v0.6.0
 	k8s.io/api v0.36.1
@@ -18,6 +20,7 @@ require (
 replace (
 	github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core => ../../libs/cloudforge-core
 	github.com/jtomasevic/cloud-forge-2/libs/openbao => ../../libs/openbao
+	github.com/jtomasevic/cloud-forge-2/libs/scylladb => ../../libs/scylladb
 )
 
 require (
@@ -32,8 +35,10 @@ require (
 	github.com/go-openapi/jsonreference v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
+	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
+	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect

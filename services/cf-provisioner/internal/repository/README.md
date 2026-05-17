@@ -1,13 +1,13 @@
 # CF-Provisioner — repository layer (`internal/repository/`)
 
-This directory is the **data and integration access layer** for CF-Provisioner. It hides **how** the service talks to external systems (Kubernetes, Cilium CRDs, Gateway API, OpenBao) behind small **interfaces** and **`cferrors`-typed errors**. Higher layers (**service**, then **REST**) should depend on these interfaces, not on client-go, dynamic clients, or exec details.
+This directory is the **data and integration access layer** for CF-Provisioner. It hides **how** the service talks to external systems (Kubernetes, Cilium CRDs, Gateway API, OpenBao, **ScyllaDB**) behind small **interfaces** and **`cferrors`-typed errors**. Higher layers (**service**, then **REST**) should depend on these interfaces, not on client-go, dynamic clients, exec details, or raw `gocql` types.
 
 The layer is **split by dependency type** (see [`docs/plan/13.CFProvisionerInfraRepositoryLayer.md`](../../../../docs/plan/13.CFProvisionerInfraRepositoryLayer.md) and [`docs/plan/14.CFProvisionerStateRepositoryLayer.md`](../../../../docs/plan/14.CFProvisionerStateRepositoryLayer.md)):
 
 | Track | Packages | Backing systems |
 |-------|-----------|-----------------|
 | **Infrastructure** (Task 13) | [`vcluster/`](vcluster/), [`cilium/`](cilium/), [`gateway/`](gateway/), [`kubeconfig/`](kubeconfig/) | Host cluster APIs, vCluster CLI, OpenBao |
-| **State** (Task 14, planned) | [`cidr/`](cidr/), [`jobs/`](jobs/) | ScyllaDB (allocations, async job records) |
+| **State** (Task 14) | [`cidr/`](cidr/), [`jobs/`](jobs/) | ScyllaDB (`cidr_allocations`, `provisioning_jobs`, `provisioning_jobs_by_network`) |
 
 ---
 
@@ -16,7 +16,7 @@ The layer is **split by dependency type** (see [`docs/plan/13.CFProvisionerInfra
 - **Encapsulate integrations** — kubeconfig loading, `vcluster` CLI invocation, `CiliumNetworkPolicy` objects as unstructured CRDs, and `HTTPRoute` resources live behind explicit methods with stable parameters.
 - **Typed errors at the boundary** — interface methods return (or wrap) `*cferrors.CFError` from `libs/cloudforge-core/pkg/errors`. Raw Kubernetes, exec, or Vault/OpenBao API errors are not returned as plain `error` types to callers.
 - **Testability** — production types are unexported (`CF…Client` / `CF…Repository`); constructors return interfaces so the service layer can substitute fakes or partial mocks in unit tests.
-- **Clear ownership** — infra repos never write CIDR rows or job rows; state repos (Task 14) never apply cluster CRDs. That split matches the architecture doc and keeps review boundaries obvious.
+- **Clear ownership** — infra repos never write CIDR rows or job rows; state repos never apply cluster CRDs. That split matches the architecture doc and keeps review boundaries obvious.
 
 ---
 
@@ -30,10 +30,12 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | [`cilium/`](cilium/) | Apply and remove `cilium.io/v2` `CiliumNetworkPolicy` objects (default deny + internet ingress). |
 | [`gateway/`](gateway/) | Create, read, and delete `gateway.networking.k8s.io` `HTTPRoute` resources for Envoy Gateway. |
 | [`kubeconfig/`](kubeconfig/) | Store, load, and revoke tenant kubeconfigs via `libs/openbao/pkg/client` helpers only (no direct Vault API usage here). |
-| [`cidr/`](cidr/) | *Planned (Task 14)* — Scylla-backed CIDR allocation and release. |
-| [`jobs/`](jobs/) | *Planned (Task 14)* — Scylla-backed async provisioning job persistence. |
+| [`cidr/`](cidr/) | Scylla-backed pod/service CIDR allocation (`cidr_allocations`), sequential auto-pool from `10.0.0.0/8` + `172.16.0.0/12`. |
+| [`jobs/`](jobs/) | Async provisioning job rows (`provisioning_jobs` + `provisioning_jobs_by_network` denormalized listing). |
 
 ### Files per package (convention)
+
+**Infrastructure packages** (`vcluster`, `cilium`, `gateway`, `kubeconfig`):
 
 | File | Role |
 |------|------|
@@ -42,6 +44,18 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | `models.go` | **Wire / domain structs** passed across the repository boundary (e.g. `CreateVClusterParams`, `HTTPRouteParams`). |
 | `errors.go` | Package **sentinel** `*cferrors.CFError` values for `errors.Is` / wrapping. |
 | `*_test.go` | Unit tests (fakes, `client-go` / `gateway-api` fakes, OpenBao `mock.SecretsClient`, etc.). |
+
+**State packages** (`cidr`, `jobs`) — same style as CF-Accounts repositories:
+
+| File | Role |
+|------|------|
+| `api.go` | **Repository interface** and `New(*scylladbclient.Session) …Repository`. |
+| `repository.go` | Unexported concrete type; `Query` / `Exec` / `Scan` via `libs/scylladb/pkg/client`. |
+| `commands.go` | **CQL string constants** with bind-order comments. |
+| `models.go` | Request/response structs (`AllocateParams`, `Job`, …). |
+| `errors.go` | Sentinel `*cferrors.CFError` values. |
+| `allocate.go` | *(cidr only)* Pure allocation / overlap logic and sequential index math. |
+| `*_test.go` | Unit tests (pure allocator tests, `gocql.ErrNotFound` mapping, etc.). |
 
 ---
 
@@ -86,15 +100,33 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | `Load(ctx, tenantID)` | Delegates to `openbao.LoadKubeconfig`; maps `ErrSecretNotFound` to `ErrKubeconfigNotFound`. |
 | `Revoke(ctx, tenantID)` | Delegates to `openbao.RevokeKubeconfig`. |
 
+### `cidr` — [`CIDRRepository`](cidr/api.go)
+
+| Method | Description |
+|--------|-------------|
+| `Allocate(ctx, params)` | Reserve pod/svc CIDRs (auto or explicit); rejects overlaps and duplicate network rows. |
+| `Get(ctx, networkID)` | Read `cidr_allocations` by `network_id`. |
+| `Release(ctx, networkID)` | Delete allocation row for deprovision. |
+| `ListAll(ctx)` | Full table scan for ops/debug (`GET /v1/cidr/allocations` backing data). |
+
+### `jobs` — [`JobsRepository`](jobs/api.go)
+
+| Method | Description |
+|--------|-------------|
+| `Create(ctx, params)` | Insert primary + `provisioning_jobs_by_network` row (`pending`); `tenant_id` is stored as **all-zero UUID** until callers pass tenant context in a future API revision. |
+| `Get(ctx, jobID)` | Load job by `id`. |
+| `ListByNetwork(ctx, networkID)` | Walk the denormalized partition (newest first), then hydrate each job from the primary table. |
+| `UpdateStatus(ctx, jobID, status, errorMsg)` | Update primary row and **best-effort** denormalized `status` (same eventual-consistency pattern as CF-Accounts `networks_by_tenant`). |
+
 ---
 
 ## Principles
 
-1. **Interfaces at the boundary** — Service code accepts `VClusterClient`, `CiliumClient`, etc., not concrete `CF…` types.
-2. **Context on every call** — All methods take `context.Context` and pass it through to Kubernetes, dynamic client, exec, or OpenBao helpers.
+1. **Interfaces at the boundary** — Service code accepts `VClusterClient`, `CiliumClient`, `CIDRRepository`, `JobsRepository`, etc., not concrete `CF…` / `*…Repository` types.
+2. **Context on every call** — All methods take `context.Context` and pass it through to Kubernetes, dynamic client, exec, OpenBao, or Scylla queries.
 3. **No raw downstream errors** — Map or wrap failures as `*cferrors.CFError` (optionally preserving a private `Unwrap` chain for logs).
 4. **`kubeconfig` stays thin** — Only `libs/openbao/pkg/client` kubeconfig helpers; no new secret paths or SDK calls in this package.
-5. **Infra vs state** — Do not add Scylla queries under `vcluster/` / `cilium/` / `gateway/` / `kubeconfig/`; use `cidr/` and `jobs/` once Task 14 is implemented.
+5. **Infra vs state** — Do not add Scylla queries under `vcluster/` / `cilium/` / `gateway/` / `kubeconfig/`; do not issue Kubernetes calls from `cidr/` or `jobs/`.
 
 ---
 
@@ -107,7 +139,9 @@ cd services/cf-provisioner
 go build ./internal/repository/vcluster/ \
           ./internal/repository/cilium/ \
           ./internal/repository/gateway/ \
-          ./internal/repository/kubeconfig/
+          ./internal/repository/kubeconfig/ \
+          ./internal/repository/cidr/ \
+          ./internal/repository/jobs/
 ```
 
 Note: `go build ./...` for the whole module may fail until a `main` package exists alongside `generate.go`; repository packages build independently as above.
@@ -130,9 +164,11 @@ go test ./internal/repository/vcluster/ -count=1
 go test ./internal/repository/cilium/ -count=1
 go test ./internal/repository/gateway/ -count=1
 go test ./internal/repository/kubeconfig/ -count=1
+go test ./internal/repository/cidr/ -count=1
+go test ./internal/repository/jobs/ -count=1
 ```
 
-Tests use fakes (`fake` clientsets, `dynamic/fake`, OpenBao `mock.SecretsClient`) and do **not** require a live cluster or OpenBao by default. Any future test that needs a real cluster should use `//go:build integration` and be run explicitly with tags.
+Tests use fakes (`fake` clientsets, `dynamic/fake`, OpenBao `mock.SecretsClient`) and pure allocator tests for **cidr**; they do **not** require a live Kubernetes cluster or OpenBao by default. Scylla-backed repository methods are exercised in unit tests only through **logic helpers** and error mapping; add `//go:build integration` tests with a real session or testcontainers when you want end-to-end CQL coverage.
 
 ---
 
@@ -143,3 +179,5 @@ Tests use fakes (`fake` clientsets, `dynamic/fake`, OpenBao `mock.SecretsClient`
 - HTTP contract (for context): [`api/cf-provisioner/v1/openapi.yaml`](../../../../api/cf-provisioner/v1/openapi.yaml)
 - Platform errors: `libs/cloudforge-core/pkg/errors`
 - OpenBao client: `libs/openbao/pkg/client`
+- Scylla client: `libs/scylladb/pkg/client`
+- Migrations: [`tools/migrations/scripts/20240101007_create_cidr_allocations.cql`](../../../../tools/migrations/scripts/20240101007_create_cidr_allocations.cql), [`20240101006_create_provisioning_state.cql`](../../../../tools/migrations/scripts/20240101006_create_provisioning_state.cql)
