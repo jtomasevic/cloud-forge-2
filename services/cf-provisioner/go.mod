@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/getkin/kin-openapi v0.138.0
 	github.com/gocql/gocql v1.7.0
+	github.com/google/uuid v1.6.0
 	github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core v0.0.0-20260517020151-3de2d2080534
 	github.com/jtomasevic/cloud-forge-2/libs/openbao v0.0.0-20260517020151-3de2d2080534
 	github.com/jtomasevic/cloud-forge-2/libs/scylladb v0.0.0-00010101000000-000000000000
@@ -37,7 +38,6 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/gnostic-models v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hailocab/go-hostpool v0.0.0-20160125115350-e80d13ce29ed // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
