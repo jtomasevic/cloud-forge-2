@@ -81,7 +81,6 @@ components:
         password:
           type: string
           format: password
-          writeOnly: true
           minLength: 8
           maxLength: 72
           description: >
@@ -111,9 +110,9 @@ components:
         password:
           type: string
           format: password
-          writeOnly: true
-          minLength: 1
+          minLength: 8
           maxLength: 72
+          description: Plaintext password (same minimum length as signup; never stored or returned).
 
     AccountList:
       type: object
@@ -284,13 +283,35 @@ components:
           description: When the credential was revoked. Null if still active.
 
     CredentialCreated:
-      allOf:
-        - $ref: '#/components/schemas/CredentialMeta'
+      type: object
       description: >
         Response body returned only at credential creation. Contains the raw
         API key in the `secret` field — this is the only time it is returned.
         The caller must store it securely; it cannot be retrieved again.
+      required: [id, accountId, prefix, createdAt, secret]
       properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique credential identifier.
+        accountId:
+          type: string
+          format: uuid
+          description: ID of the account that owns this credential.
+        prefix:
+          type: string
+          description: >
+            First 8 characters of the API key, used for identification in
+            listings and audit logs. Never contains the full secret.
+        createdAt:
+          type: string
+          format: date-time
+          description: When the credential was created (ISO 8601, UTC).
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the credential was revoked. Null if still active.
         secret:
           type: string
           description: >

@@ -141,6 +141,17 @@ func TestLoginWithPassword_WrongPassword(t *testing.T) {
 	}
 }
 
+func TestLoginWithPassword_ShortPassword(t *testing.T) {
+	svc := New(Deps{})
+	_, err := svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
+		Email:    "any@example.com",
+		Password: "short",
+	})
+	if !errors.Is(err, cferrors.ErrInvalidInput) {
+		t.Fatalf("expected ErrInvalidInput, got %v", err)
+	}
+}
+
 func TestCreateCredential_SecretAndHash(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	aid := uuid.New().String()

@@ -14,6 +14,7 @@ const (
 )
 
 // validateNewAccountPassword enforces signup rules: non-whitespace-only, length 8–72 bytes.
+// Also used for login so password length policy matches [CreateAccount].
 func validateNewAccountPassword(password string) error {
 	if strings.TrimSpace(password) == "" {
 		return cferrors.Wrap(cferrors.CodeInvalidInput, "password is required", cferrors.ErrInvalidInput)

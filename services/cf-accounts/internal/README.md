@@ -13,8 +13,9 @@ HTTP request
      ▼
 ┌─────────────────────────────┐
 │         REST layer          │  internal/rest/
-│  handler.go  service.go     │  Parses HTTP, calls one service method,
+│  handler.go  server.go      │  Parses HTTP, calls one service method,
 │  models.go   errors.go      │  maps result to HTTP response.
+│  models_transform.go        │
 │  generated/  (oapi-codegen) │  Never touches repositories directly.
 └──────────────┬──────────────┘
                │  service-layer models only
@@ -45,10 +46,12 @@ HTTP request
 |---|---|
 | `generated/server.gen.go` | oapi-codegen output — **never edit by hand** |
 | `handler.go` | Implements `generated.StrictServerInterface` |
-| `service.go` | `NewRouter()`, middleware chain (`net/http` only) |
-| `models.go` | HTTP-only models not covered by generated types |
+| `server.go` | `NewRouter(*Handler)` — strict handler + `http.ServeMux` + middleware chain |
+| `models.go` | Package docs; optional HTTP-only types not covered by generated code |
 | `models_transform.go` | Maps REST ↔ service models |
-| `errors.go` | Maps service errors → HTTP status + error body |
+| `errors.go` | Maps service errors → HTTP status + JSON error body |
+
+See also [`../README.md`](../README.md) (service runbook: signup, login, env vars).
 
 Rules:
 - Each handler method calls **exactly one service method**.
@@ -118,7 +121,7 @@ POST /v1/accounts
   │
   ▼ handler.CreateAccount(ctx, req)
       validates + maps CreateAccountJSONBody → service.CreateAccountParams
-        (email + password; password is write-only in OpenAPI)
+        (email + password; both required in OpenAPI / generated request types)
       calls AccountsService.CreateAccount(ctx, params)
         │
         ▼ service.CreateAccount(ctx, params)

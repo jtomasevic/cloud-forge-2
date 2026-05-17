@@ -24,9 +24,10 @@ type AccountsService interface {
 	CreateAccount(ctx context.Context, params CreateAccountParams) (CreateAccountResult, error)
 
 	// LoginWithPassword loads the account by email and verifies the password against
-	// the stored bcrypt hash. Any failure (unknown email, wrong password, empty hash,
-	// non-active account) returns [ErrInvalidCredentials] so callers cannot distinguish
-	// the reason. On success returns [Account] without password material.
+	// the stored bcrypt hash. Malformed passwords (e.g. shorter than signup minimum)
+	// return the same validation errors as [CreateAccount]. Wrong password, unknown
+	// email, empty hash, or non-active account returns [ErrInvalidCredentials] so callers
+	// cannot infer whether the email was unknown or the password was wrong. On success returns [Account] without password material.
 	LoginWithPassword(ctx context.Context, params LoginWithPasswordParams) (Account, error)
 
 	// GetAccount returns an account by primary key UUID string.
