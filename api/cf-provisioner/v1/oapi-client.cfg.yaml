@@ -1,0 +1,5 @@
+package: cfprovisionerclient
+generate:
+  client: true
+  models: true
+output: ../../../libs/clients/cf-provisioner/v1/client.gen.go
