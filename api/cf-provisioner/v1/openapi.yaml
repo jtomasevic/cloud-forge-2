@@ -1,0 +1,578 @@
+openapi: "3.0.3"
+
+info:
+  title: CF-Provisioner
+  version: "1.0.0"
+  description: >
+    CF-Provisioner is the infrastructure provisioning and lifecycle engine for
+    CloudForge. It creates and manages tenant vCluster instances, CIDR allocations,
+    Cilium network policies, kubeconfigs, and internet gateways.
+  contact:
+    name: CloudForge Platform Team
+    url: https://github.com/jtomasevic/cloud-forge-2
+
+servers:
+  - url: http://localhost:8082
+    description: Local development
+
+# ---------------------------------------------------------------------------
+# Security schemes
+# ---------------------------------------------------------------------------
+components:
+  securitySchemes:
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: X-CF-Internal-Secret
+      description: >
+        Shared secret for internal control-plane calls only. CF-Provisioner is not
+        exposed to tenants; all operations require this header.
+
+  schemas:
+    ProvisionNetworkRequest:
+      type: object
+      required: [tenantId, region]
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        region:
+          type: string
+        podCIDRPrefix:
+          type: string
+          description: >
+            Optional CIDR prefix to use. If omitted, auto-allocated from the platform supernet.
+        svcCIDRPrefix:
+          type: string
+          description: Optional service CIDR prefix.
+
+    NetworkProvisioningStatus:
+      type: object
+      required: [networkId, tenantId, status, podCIDR, svcCIDR, createdAt]
+      properties:
+        networkId:
+          type: string
+          format: uuid
+        tenantId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [provisioning, active, deprovisioning, deprovisioned, failed]
+        podCIDR:
+          type: string
+        svcCIDR:
+          type: string
+        vclusterName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        failureReason:
+          type: string
+          nullable: true
+
+    ProvisionGatewayRequest:
+      type: object
+      required: [publicDNSName]
+      properties:
+        publicDNSName:
+          type: string
+          description: >
+            The public DNS name to expose (e.g. tenant-abc.gateway.cloudforge.io).
+        tlsEnabled:
+          type: boolean
+          default: true
+
+    GatewayStatus:
+      type: object
+      required: [networkId, status, publicEndpoint]
+      properties:
+        networkId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [provisioning, active, removing, removed, failed]
+        publicEndpoint:
+          type: string
+          nullable: true
+        httpRouteName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Job:
+      type: object
+      required: [id, networkId, type, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        networkId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum:
+            - provision_network
+            - deprovision_network
+            - provision_gateway
+            - remove_gateway
+            - provision_subnet
+        status:
+          type: string
+          enum: [pending, running, succeeded, failed]
+        errorMessage:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    JobList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+
+    Subnet:
+      type: object
+      required: [id, networkId, type, cidr]
+      properties:
+        id:
+          type: string
+          format: uuid
+        networkId:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [private, public]
+        cidr:
+          type: string
+        zone:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateSubnetRequest:
+      type: object
+      required: [type, cidr]
+      properties:
+        type:
+          type: string
+          enum: [private, public]
+        cidr:
+          type: string
+        zone:
+          type: string
+          description: Optional availability zone or placement hint for the subnet.
+
+    SubnetList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Subnet"
+
+    CIDRAllocation:
+      type: object
+      required: [networkId, podCIDR, svcCIDR, allocatedAt]
+      properties:
+        networkId:
+          type: string
+          format: uuid
+        podCIDR:
+          type: string
+        svcCIDR:
+          type: string
+        allocatedAt:
+          type: string
+          format: date-time
+
+    CIDRAllocationList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/CIDRAllocation"
+
+    Error:
+      type: object
+      description: Standard error response returned for all 4xx and 5xx responses.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code, e.g. "NOT_FOUND".
+        message:
+          type: string
+          description: Human-readable error description.
+        requestId:
+          type: string
+          description: >
+            Correlation ID from the X-Request-ID header, echoed back for
+            tracing across service boundaries.
+
+  parameters:
+    networkId:
+      name: networkId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique network identifier.
+    jobId:
+      name: jobId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique async job identifier.
+    limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+      description: Maximum number of items to return (1–100, default 20).
+    offset:
+      name: offset
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      description: Zero-based offset of the first item to return (default 0).
+
+  responses:
+    BadRequest:
+      description: Request payload failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Unauthorized:
+      description: Missing or invalid X-CF-Internal-Secret.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    NotFound:
+      description: The requested resource does not exist.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Conflict:
+      description: The request conflicts with the current state of the resource.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalServerError:
+      description: An unexpected error occurred inside the service.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+tags:
+  - name: Networks
+    description: Tenant private network provisioning and lifecycle.
+  - name: Gateways
+    description: Internet gateway (Envoy Gateway HTTPRoute + Cilium) lifecycle.
+  - name: Jobs
+    description: Async provisioning job status and listing.
+  - name: Subnets
+    description: Subnets within a provisioned network.
+  - name: CIDR
+    description: Internal CIDR allocation visibility for operators.
+
+security:
+  - InternalSecret: []
+
+paths:
+  /v1/networks:
+    post:
+      operationId: provisionNetwork
+      summary: Provision a tenant private network
+      description: >
+        Starts asynchronous provisioning of a new tenant private network: vCluster
+        creation, CIDR allocation, Cilium policies, and kubeconfig storage.
+        Returns **202 Accepted** immediately with a `Job` whose `id` is the async
+        job handle. Poll `GET /v1/jobs/{jobId}` until `status` is `succeeded` or
+        `failed`, then read final state with `GET /v1/networks/{networkId}`.
+      tags: [Networks]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProvisionNetworkRequest"
+      responses:
+        "202":
+          description: Provisioning accepted; job created for background work.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/networks/{networkId}:
+    parameters:
+      - $ref: "#/components/parameters/networkId"
+    get:
+      operationId: getNetworkProvisioningStatus
+      summary: Get network provisioning status
+      description: Returns the current provisioning state and CIDRs for a network.
+      tags: [Networks]
+      responses:
+        "200":
+          description: Current network provisioning status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NetworkProvisioningStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      operationId: deprovisionNetwork
+      summary: Deprovision a network
+      description: >
+        Starts asynchronous teardown of the network (vCluster destroy, CIDR free,
+        kubeconfig removal). Returns **202 Accepted** with a `Job` representing the
+        deprovision workflow. Poll `GET /v1/jobs/{jobId}` until completion.
+      tags: [Networks]
+      responses:
+        "202":
+          description: Deprovisioning accepted; job created for background work.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/networks/{networkId}/gateway:
+    parameters:
+      - $ref: "#/components/parameters/networkId"
+    post:
+      operationId: provisionGateway
+      summary: Provision an internet gateway for a network
+      description: >
+        Creates Envoy Gateway HTTPRoute and Cilium ingress policy for public access.
+        This operation is modeled as synchronous: returns **201 Created** with
+        `GatewayStatus` when accepted by the control plane.
+      tags: [Gateways]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProvisionGatewayRequest"
+      responses:
+        "201":
+          description: Gateway provisioning completed or resource created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayStatus"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    get:
+      operationId: getGatewayStatus
+      summary: Get internet gateway status
+      tags: [Gateways]
+      responses:
+        "200":
+          description: Current gateway status for the network.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GatewayStatus"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    delete:
+      operationId: removeGateway
+      summary: Remove the internet gateway
+      description: >
+        Removes Envoy Gateway HTTPRoute and related ingress policy. Synchronous
+        delete: **204 No Content** on success.
+      tags: [Gateways]
+      responses:
+        "204":
+          description: Gateway removed successfully.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/jobs/{jobId}:
+    parameters:
+      - $ref: "#/components/parameters/jobId"
+    get:
+      operationId: getJob
+      summary: Get async job status
+      description: Returns status for a provisioning job returned from async operations.
+      tags: [Jobs]
+      responses:
+        "200":
+          description: Job record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/networks/{networkId}/jobs:
+    parameters:
+      - $ref: "#/components/parameters/networkId"
+      - $ref: "#/components/parameters/limit"
+      - $ref: "#/components/parameters/offset"
+    get:
+      operationId: listNetworkJobs
+      summary: List jobs for a network
+      tags: [Jobs]
+      responses:
+        "200":
+          description: Jobs associated with the network, newest first (implementation-defined order).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/networks/{networkId}/subnets:
+    parameters:
+      - $ref: "#/components/parameters/networkId"
+    post:
+      operationId: createSubnet
+      summary: Create a subnet in a network
+      tags: [Subnets]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubnetRequest"
+      responses:
+        "201":
+          description: Subnet created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Subnet"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+    get:
+      operationId: listSubnets
+      summary: List subnets in a network
+      tags: [Subnets]
+      responses:
+        "200":
+          description: Subnets belonging to the network.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubnetList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /v1/cidr/allocations:
+    get:
+      operationId: listCIDRAllocations
+      summary: List CIDR allocations
+      description: Operator/debug view of all allocated pod and service CIDR pairs.
+      tags: [CIDR]
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: Allocated CIDRs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CIDRAllocationList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
