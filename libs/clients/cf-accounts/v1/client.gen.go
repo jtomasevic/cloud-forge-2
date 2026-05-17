@@ -88,7 +88,7 @@ type CreateAccountRequest struct {
 	Email openapi_types.Email `json:"email"`
 
 	// Password Account password. CF-Accounts stores only a bcrypt hash; the plaintext value is never written to the database or returned by the API.
-	Password *string `json:"password,omitempty"`
+	Password string `json:"password"`
 }
 
 // CreateAccountResult Returned when signup succeeds. Includes the default tenant created with the account so clients receive tenant id and slug without calling list tenants.
@@ -112,8 +112,26 @@ type CreateNetworkRequest struct {
 	SvcCIDR string `json:"svcCIDR"`
 }
 
-// CredentialCreated Metadata about an API credential. The raw secret key is never returned after creation — only the prefix (first 8 characters) is stored for identification.
-type CredentialCreated = CredentialMeta
+// CredentialCreated Response body returned only at credential creation. Contains the raw API key in the `secret` field — this is the only time it is returned. The caller must store it securely; it cannot be retrieved again.
+type CredentialCreated struct {
+	// AccountId ID of the account that owns this credential.
+	AccountId openapi_types.UUID `json:"accountId"`
+
+	// CreatedAt When the credential was created (ISO 8601, UTC).
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Id Unique credential identifier.
+	Id openapi_types.UUID `json:"id"`
+
+	// Prefix First 8 characters of the API key, used for identification in listings and audit logs. Never contains the full secret.
+	Prefix string `json:"prefix"`
+
+	// RevokedAt When the credential was revoked. Null if still active.
+	RevokedAt *time.Time `json:"revokedAt"`
+
+	// Secret The full API key. Shown exactly once at creation. Store it securely — CF-Accounts does not store the raw value.
+	Secret string `json:"secret"`
+}
 
 // CredentialList Paginated list of credential metadata records.
 type CredentialList struct {
@@ -155,8 +173,10 @@ type Error struct {
 
 // LoginRequest Credentials for password-based login (CLI and API clients).
 type LoginRequest struct {
-	Email    openapi_types.Email `json:"email"`
-	Password *string             `json:"password,omitempty"`
+	Email openapi_types.Email `json:"email"`
+
+	// Password Plaintext password (same minimum length as signup; never stored or returned).
+	Password string `json:"password"`
 }
 
 // Network A private network provisioned for a CloudForge tenant.

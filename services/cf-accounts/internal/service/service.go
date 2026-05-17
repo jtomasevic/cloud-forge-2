@@ -88,8 +88,11 @@ func (s *CFAccountsService) CreateAccount(ctx context.Context, params CreateAcco
 // LoginWithPassword implements [AccountsService.LoginWithPassword].
 func (s *CFAccountsService) LoginWithPassword(ctx context.Context, params LoginWithPasswordParams) (Account, error) {
 	email := strings.TrimSpace(params.Email)
-	if email == "" || params.Password == "" {
+	if email == "" {
 		return Account{}, ErrInvalidCredentials
+	}
+	if err := validateNewAccountPassword(params.Password); err != nil {
+		return Account{}, err
 	}
 	row, err := s.deps.Accounts.GetByEmail(ctx, email)
 	if err != nil {
