@@ -38,6 +38,51 @@ Each subfolder is a **separate Go package** with **no imports** between subfolde
 
 ---
 
+## Interface methods (summary)
+
+Each constructor is `New(session *scylladbclient.Session) …Repository` — see [`api.go`](accounts/api.go) in each package for full doc comments.
+
+### `accounts` — [`AccountsRepository`](accounts/api.go)
+
+| Method | Description |
+|--------|-------------|
+| `Insert(ctx, row)` | Insert account + denormalized `accounts_by_email` row. |
+| `GetByID(ctx, id)` | Load account by primary key. |
+| `GetByEmail(ctx, email)` | Resolve account via lookup table. |
+| `List(ctx, limit, offset)` | Paged list; total hint may be `-1` when unknown (see package docs). |
+| `UpdateStatus(ctx, id, status)` | Update account lifecycle status. |
+
+### `tenants` — [`TenantsRepository`](tenants/api.go)
+
+| Method | Description |
+|--------|-------------|
+| `Insert(ctx, row)` | Insert tenant + denormalized slug / account index rows. |
+| `GetByID(ctx, id)` | Load tenant by primary key. |
+| `GetBySlug(ctx, slug)` | Resolve tenant via global slug lookup. |
+| `ListByAccount(ctx, accountID, limit, offset)` | Paged tenants for an account. |
+| `UpdateStatus(ctx, id, status)` | Update tenant lifecycle status. |
+
+### `networks` — [`NetworksRepository`](networks/api.go)
+
+| Method | Description |
+|--------|-------------|
+| `Insert(ctx, row)` | Insert network + denormalized `networks_by_tenant` row. |
+| `GetByID(ctx, id)` | Load network by primary key. |
+| `ListByTenant(ctx, tenantID)` | All networks for a tenant. |
+| `UpdateStatus(ctx, id, status)` | Update network status (denormalized paths per implementation comments). |
+
+### `credentials` — [`CredentialsRepository`](credentials/api.go)
+
+| Method | Description |
+|--------|-------------|
+| `Insert(ctx, row)` | Insert API key + denormalized hash / account index rows. |
+| `GetByID(ctx, id)` | Load credential by primary key. |
+| `GetByHash(ctx, keyHash)` | Resolve API key for authentication (hash lookup). |
+| `ListByAccount(ctx, accountID)` | All keys for an account. |
+| `Revoke(ctx, id, revokedAt)` | Mark key revoked and maintain lookup invariants. |
+
+---
+
 ## Principles
 
 1. **Interface at the boundary** — The service layer should accept `AccountsRepository`, `TenantsRepository`, etc., not concrete structs, so implementations can be swapped or mocked.
@@ -49,19 +94,55 @@ Each subfolder is a **separate Go package** with **no imports** between subfolde
 
 ---
 
+## Build
+
+From the service module root:
+
+```bash
+cd services/cf-accounts
+go build ./internal/repository/...
+```
+
+To build the entire service (includes REST, service, and repositories):
+
+```bash
+go build -o cf-accounts .
+```
+
+(requires a `main` package at the module root; adjust if your entrypoint differs.)
+
+---
+
+## Testing
+
+- **Unit tests** in each package avoid a live ScyllaDB cluster by default; they cover helpers such as UUID validation and error mapping (`gocql.ErrNotFound` → domain not found, revoked key checks for credentials, etc.).
+
+Run all repository package tests:
+
+```bash
+cd services/cf-accounts
+go test ./internal/repository/... -count=1
+```
+
+Run a single package:
+
+```bash
+go test ./internal/repository/accounts/ -count=1
+go test ./internal/repository/tenants/ -count=1
+go test ./internal/repository/networks/ -count=1
+go test ./internal/repository/credentials/ -count=1
+```
+
+- **Integration tests** (optional, `//go:build integration`) can be added later with a real session or testcontainers; the plan allows either approach. Run with e.g. `go test -tags=integration ./internal/repository/...` when present.
+
+---
+
 ## References
 
 - Task spec: [`docs/plan/08.CFAccountsRepositoryLayer.md`](../../../../docs/plan/08.CFAccountsRepositoryLayer.md) (repository contracts and acceptance criteria).
 - Schema / migrations: [`docs/plan/07.CFAccountsSchemaAndMigrations.md`](../../../../docs/plan/07.CFAccountsSchemaAndMigrations.md) and [`tools/migrations/README.md`](../../../../tools/migrations/README.md).
 - Platform errors: `libs/cloudforge-core/pkg/errors`.
 - Scylla client: `libs/scylladb/pkg/client`.
-
----
-
-## Testing
-
-- **Unit tests** in each package avoid a live cluster; they cover helpers such as UUID validation and error mapping (`gocql.ErrNotFound` → domain not found, revoked key checks for credentials, etc.).
-- **Integration tests** (optional, `//go:build integration`) can be added later with a real session or testcontainers; the plan allows either approach.
 
 ---
 
