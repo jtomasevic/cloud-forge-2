@@ -219,6 +219,9 @@ type NotFound = Error
 // Unauthorized Standard error response returned for all 4xx and 5xx responses.
 type Unauthorized = Error
 
+// UnprocessableEntity Standard error response returned for all 4xx and 5xx responses.
+type UnprocessableEntity = Error
+
 // ListCIDRAllocationsParams defines parameters for ListCIDRAllocations.
 type ListCIDRAllocationsParams struct {
 	// Limit Maximum number of items to return (1–100, default 20).
@@ -1090,6 +1093,7 @@ type ListCIDRAllocationsResponse struct {
 	HTTPResponse *http.Response
 	JSON200      *CIDRAllocationList
 	JSON401      *Unauthorized
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1115,6 +1119,7 @@ type GetJobResponse struct {
 	JSON200      *Job
 	JSON401      *Unauthorized
 	JSON404      *NotFound
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1141,6 +1146,7 @@ type ProvisionNetworkResponse struct {
 	JSON400      *BadRequest
 	JSON401      *Unauthorized
 	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1167,6 +1173,7 @@ type DeprovisionNetworkResponse struct {
 	JSON401      *Unauthorized
 	JSON404      *NotFound
 	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1192,6 +1199,7 @@ type GetNetworkProvisioningStatusResponse struct {
 	JSON200      *NetworkProvisioningStatus
 	JSON401      *Unauthorized
 	JSON404      *NotFound
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1214,9 +1222,11 @@ func (r GetNetworkProvisioningStatusResponse) StatusCode() int {
 type RemoveGatewayResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON202      *Job
 	JSON401      *Unauthorized
 	JSON404      *NotFound
 	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1242,6 +1252,7 @@ type GetGatewayStatusResponse struct {
 	JSON200      *GatewayStatus
 	JSON401      *Unauthorized
 	JSON404      *NotFound
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1264,11 +1275,12 @@ func (r GetGatewayStatusResponse) StatusCode() int {
 type ProvisionGatewayResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
-	JSON201      *GatewayStatus
+	JSON202      *Job
 	JSON400      *BadRequest
 	JSON401      *Unauthorized
 	JSON404      *NotFound
 	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1294,6 +1306,7 @@ type ListNetworkJobsResponse struct {
 	JSON200      *JobList
 	JSON401      *Unauthorized
 	JSON404      *NotFound
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1319,6 +1332,7 @@ type ListSubnetsResponse struct {
 	JSON200      *SubnetList
 	JSON401      *Unauthorized
 	JSON404      *NotFound
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1346,6 +1360,7 @@ type CreateSubnetResponse struct {
 	JSON401      *Unauthorized
 	JSON404      *NotFound
 	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
 	JSON500      *InternalServerError
 }
 
@@ -1516,6 +1531,13 @@ func ParseListCIDRAllocationsResponse(rsp *http.Response) (*ListCIDRAllocationsR
 		}
 		response.JSON401 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1562,6 +1584,13 @@ func ParseGetJobResponse(rsp *http.Response) (*GetJobResponse, error) {
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
@@ -1617,6 +1646,13 @@ func ParseProvisionNetworkResponse(rsp *http.Response) (*ProvisionNetworkRespons
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1671,6 +1707,13 @@ func ParseDeprovisionNetworkResponse(rsp *http.Response) (*DeprovisionNetworkRes
 		}
 		response.JSON409 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1718,6 +1761,13 @@ func ParseGetNetworkProvisioningStatusResponse(rsp *http.Response) (*GetNetworkP
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1744,6 +1794,13 @@ func ParseRemoveGatewayResponse(rsp *http.Response) (*RemoveGatewayResponse, err
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Job
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
 		var dest Unauthorized
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1764,6 +1821,13 @@ func ParseRemoveGatewayResponse(rsp *http.Response) (*RemoveGatewayResponse, err
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
@@ -1812,6 +1876,13 @@ func ParseGetGatewayStatusResponse(rsp *http.Response) (*GetGatewayStatusRespons
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1838,12 +1909,12 @@ func ParseProvisionGatewayResponse(rsp *http.Response) (*ProvisionGatewayRespons
 	}
 
 	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
-		var dest GatewayStatus
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Job
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
-		response.JSON201 = &dest
+		response.JSON202 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
 		var dest BadRequest
@@ -1872,6 +1943,13 @@ func ParseProvisionGatewayResponse(rsp *http.Response) (*ProvisionGatewayRespons
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
@@ -1920,6 +1998,13 @@ func ParseListNetworkJobsResponse(rsp *http.Response) (*ListNetworkJobsResponse,
 		}
 		response.JSON404 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -1966,6 +2051,13 @@ func ParseListSubnetsResponse(rsp *http.Response) (*ListSubnetsResponse, error) 
 			return nil, err
 		}
 		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError
@@ -2027,6 +2119,13 @@ func ParseCreateSubnetResponse(rsp *http.Response) (*CreateSubnetResponse, error
 			return nil, err
 		}
 		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
 		var dest InternalServerError

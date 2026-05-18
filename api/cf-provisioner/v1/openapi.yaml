@@ -298,6 +298,14 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    UnprocessableEntity:
+      description: >
+        The request was well-formed but could not be applied (for example
+        provisioning preconditions or dependency failures).
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
 tags:
   - name: Networks
@@ -345,6 +353,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -367,6 +377,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
@@ -390,6 +402,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -400,9 +414,9 @@ paths:
       operationId: provisionGateway
       summary: Provision an internet gateway for a network
       description: >
-        Creates Envoy Gateway HTTPRoute and Cilium ingress policy for public access.
-        This operation is modeled as synchronous: returns **201 Created** with
-        `GatewayStatus` when accepted by the control plane.
+        Starts asynchronous gateway wiring: Envoy Gateway HTTPRoute and Cilium ingress policy.
+        Returns **202 Accepted** with a `Job` handle; poll `GET /v1/jobs/{jobId}` until completion,
+        then read `GET /v1/networks/{networkId}/gateway`.
       tags: [Gateways]
       requestBody:
         required: true
@@ -411,12 +425,12 @@ paths:
             schema:
               $ref: "#/components/schemas/ProvisionGatewayRequest"
       responses:
-        "201":
-          description: Gateway provisioning completed or resource created.
+        "202":
+          description: Gateway provisioning accepted; job created for background work.
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/GatewayStatus"
+                $ref: "#/components/schemas/Job"
         "400":
           $ref: "#/components/responses/BadRequest"
         "401":
@@ -425,6 +439,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
     get:
@@ -442,24 +458,32 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
     delete:
       operationId: removeGateway
       summary: Remove the internet gateway
       description: >
-        Removes Envoy Gateway HTTPRoute and related ingress policy. Synchronous
-        delete: **204 No Content** on success.
+        Starts asynchronous removal of the Envoy Gateway HTTPRoute and related Cilium ingress policy.
+        Returns **202 Accepted** with a `Job` handle; poll `GET /v1/jobs/{jobId}` until completion.
       tags: [Gateways]
       responses:
-        "204":
-          description: Gateway removed successfully.
+        "202":
+          description: Gateway removal accepted; job created for background work.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
         "401":
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -482,6 +506,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -505,6 +531,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -536,6 +564,8 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
     get:
@@ -553,6 +583,8 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
 
@@ -574,5 +606,7 @@ paths:
                 $ref: "#/components/schemas/CIDRAllocationList"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
