@@ -1,0 +1,5 @@
+package: cfrouterclient
+generate:
+  client: true
+  models: true
+output: ../../../libs/clients/cf-router/v1/client.gen.go
