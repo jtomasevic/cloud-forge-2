@@ -144,8 +144,6 @@ go build ./internal/repository/vcluster/ \
           ./internal/repository/jobs/
 ```
 
-Note: `go build ./...` for the whole module may fail until a `main` package exists alongside `generate.go`; repository packages build independently as above.
-
 ---
 
 ## Testing

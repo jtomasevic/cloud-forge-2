@@ -23,7 +23,8 @@ type ProvisionerService interface {
 	GetGatewayStatus(ctx context.Context, networkID string) (GatewayStatus, error)
 	RemoveGateway(ctx context.Context, networkID string) (Job, error)
 	GetJob(ctx context.Context, jobID string) (Job, error)
-	ListNetworkJobs(ctx context.Context, networkID string) ([]Job, error)
+	ListNetworkJobs(ctx context.Context, networkID string, limit, offset int) ([]Job, error)
+	ListCIDRAllocations(ctx context.Context, limit, offset int) ([]cidrrepo.CIDRAllocation, error)
 	ProvisionSubnet(ctx context.Context, params ProvisionSubnetParams) (Subnet, error)
 	ListSubnets(ctx context.Context, networkID string) ([]Subnet, error)
 }

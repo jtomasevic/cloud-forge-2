@@ -711,8 +711,8 @@ func (s *CFProvisionerService) GetJob(ctx context.Context, jobID string) (Job, e
 	return toServiceJob(j), nil
 }
 
-// ListNetworkJobs returns newest-first rows from the repository as service Jobs.
-func (s *CFProvisionerService) ListNetworkJobs(ctx context.Context, networkID string) ([]Job, error) {
+// ListNetworkJobs returns newest-first rows from the repository as service Jobs, sliced to [offset, offset+limit).
+func (s *CFProvisionerService) ListNetworkJobs(ctx context.Context, networkID string, limit, offset int) ([]Job, error) {
 	networkID = strings.TrimSpace(networkID)
 	if networkID == "" {
 		return nil, cferrors.Wrap(cferrors.CodeInvalidInput, "networkID is required", cferrors.ErrInvalidInput)
@@ -725,7 +725,35 @@ func (s *CFProvisionerService) ListNetworkJobs(ctx context.Context, networkID st
 	for _, j := range list {
 		out = append(out, toServiceJob(j))
 	}
-	return out, nil
+	return slicePage(out, offset, limit), nil
+}
+
+// ListCIDRAllocations returns a page of all CIDR rows (operator view). Order follows repository ListAll.
+func (s *CFProvisionerService) ListCIDRAllocations(ctx context.Context, limit, offset int) ([]cidrrepo.CIDRAllocation, error) {
+	all, err := s.deps.CIDR.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return slicePage(all, offset, limit), nil
+}
+
+func slicePage[T any](items []T, offset, limit int) []T {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit < 1 {
+		limit = 1
+	}
+	if offset >= len(items) {
+		return nil
+	}
+	end := offset + limit
+	if end > len(items) {
+		end = len(items)
+	}
+	out := make([]T, end-offset)
+	copy(out, items[offset:end])
+	return out
 }
 
 // ProvisionSubnet is an in-memory placeholder until Task 14+ persists subnets in Scylla.

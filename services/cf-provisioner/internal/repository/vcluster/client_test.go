@@ -36,12 +36,12 @@ func fakeVClusterSTS(name, namespace string) *appsv1.StatefulSet {
 		Spec: appsv1.StatefulSetSpec{
 			Replicas: &replicas,
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "vcluster"}},
-		Template: corev1.PodTemplateSpec{
-			ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "vcluster"}},
-			Spec: corev1.PodSpec{
-				Containers: []corev1.Container{{Name: "syncer", Image: "test"}},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: map[string]string{"app": "vcluster"}},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{{Name: "syncer", Image: "test"}},
+				},
 			},
-		},
 			ServiceName: "svc",
 		},
 		Status: appsv1.StatefulSetStatus{
