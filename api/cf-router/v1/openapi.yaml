@@ -1,0 +1,271 @@
+openapi: "3.0.3"
+
+info:
+  title: CF-Router
+  version: "1.0.0"
+  description: >
+    CF-Router is the tenant-aware platform routing layer for CloudForge.
+    It validates credentials, resolves tenant context via CF-Accounts,
+    enriches requests with tenant metadata, and proxies them to the
+    appropriate internal CF service.
+
+    Most traffic passes through CF-Router transparently. The operations
+    defined here are for health checks, readiness, and operator introspection.
+
+    **Proxy routing (configuration, not part of this contract):**
+
+    - `/v1/accounts/**` → CF-Accounts (`http://cf-accounts:8081`)
+
+    - `/v1/tenants/**` → CF-Accounts (`http://cf-accounts:8081`)
+
+    - `/v1/networks/**` → CF-Provisioner (`http://cf-provisioner:8082`)
+
+    - `/v1/gateways/**` → CF-Provisioner (`http://cf-provisioner:8082`)
+
+    - `/v1/jobs/**` → CF-Provisioner (`http://cf-provisioner:8082`)
+
+    **Headers added to proxied upstream requests:**
+
+    - `X-CF-Tenant-ID`: resolved tenant ID
+
+    - `X-CF-Account-ID`: resolved account ID
+
+    - `X-CF-Network-ID`: resolved network ID (if any)
+
+    - `X-CF-Region`: tenant region
+
+    - `X-CF-Internal-Secret`: internal shared secret (replaced or injected; not forwarded from clients)
+
+  contact:
+    name: CloudForge Platform Team
+    url: https://github.com/jtomasevic/cloud-forge-2
+
+servers:
+  - url: http://localhost:8083
+    description: Local development
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: >
+        JWT issued by Keycloak (or compatible IdP). Used for tenant-scoped requests
+        that CF-Router validates before proxying.
+
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-CF-API-Key
+      description: >
+        Tenant API key for programmatic access. CF-Router validates the key
+        before proxying.
+
+    InternalSecret:
+      type: apiKey
+      in: header
+      name: X-CF-Internal-Secret
+      description: >
+        Shared secret for operator-only internal endpoints on CF-Router itself.
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+        version:
+          type: string
+          description: Optional build or release version string.
+
+    ReadyResponse:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded]
+        checks:
+          type: object
+          properties:
+            cfAccounts:
+              type: string
+              enum: [ok, unreachable]
+
+    RouteTarget:
+      type: object
+      required: [pathPrefix, targetURL, description]
+      properties:
+        pathPrefix:
+          type: string
+          description: Incoming path prefix matched by CF-Router.
+        targetURL:
+          type: string
+          description: Base URL of the upstream CF service.
+        description:
+          type: string
+          description: Human-readable purpose of the route.
+
+    RouteTargetList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/RouteTarget"
+
+    TenantContextResponse:
+      type: object
+      required: [tenantId, accountId, region, status]
+      properties:
+        tenantId:
+          type: string
+          format: uuid
+        accountId:
+          type: string
+          format: uuid
+        networkId:
+          type: string
+          format: uuid
+          nullable: true
+        region:
+          type: string
+        status:
+          type: string
+          description: Tenant status from CF-Accounts (exact values defined by upstream API).
+        resolvedVia:
+          type: string
+          enum: [jwt, api_key]
+          description: How the tenant was resolved from the presented credentials.
+
+    Error:
+      type: object
+      description: Standard error response returned for 4xx and 5xx responses.
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Machine-readable error code, e.g. "NOT_FOUND".
+        message:
+          type: string
+          description: Human-readable error description.
+        requestId:
+          type: string
+          description: >
+            Correlation ID from the X-Request-ID header, echoed back for
+            tracing across service boundaries.
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    Forbidden:
+      description: Authenticated but not permitted to perform this operation.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    InternalServerError:
+      description: An unexpected error occurred inside CF-Router.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+tags:
+  - name: Health
+    description: Liveness and readiness probes.
+  - name: Internal
+    description: Operator-only introspection on CF-Router itself.
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness probe
+      description: Returns 200 if the CF-Router process is running.
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Service is alive.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /ready:
+    get:
+      operationId: getReady
+      summary: Readiness probe
+      description: >
+        Returns 200 when CF-Router considers itself ready to serve traffic,
+        including a dependency check against CF-Accounts.
+      tags: [Health]
+      security: []
+      responses:
+        "200":
+          description: Ready or degraded-but-serving (see body.status).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadyResponse"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /internal/routes:
+    get:
+      operationId: listInternalRoutes
+      summary: List registered route targets
+      description: >
+        Operator-only introspection of the static or configured routing table
+        CF-Router uses when proxying to internal services.
+      tags: [Internal]
+      security:
+        - InternalSecret: []
+      responses:
+        "200":
+          description: Registered route targets.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RouteTargetList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /internal/tenant-context:
+    get:
+      operationId: getInternalTenantContext
+      summary: Resolve tenant context for debugging
+      description: >
+        Validates the caller credentials the same way as proxied traffic,
+        resolves tenant context via CF-Accounts, and returns the resolved fields
+        without forwarding the request upstream. For operator debugging only.
+      tags: [Internal]
+      security:
+        - BearerAuth: []
+        - ApiKeyAuth: []
+      responses:
+        "200":
+          description: Resolved tenant context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TenantContextResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "500":
+          $ref: "#/components/responses/InternalServerError"

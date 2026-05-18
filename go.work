@@ -3,6 +3,7 @@ go 1.26.0
 use (
 	./libs/clients/cf-accounts
 	./libs/clients/cf-provisioner
+	./libs/clients/cf-router
 	./libs/cloudforge-core
 	./libs/openbao
 	./libs/scylladb

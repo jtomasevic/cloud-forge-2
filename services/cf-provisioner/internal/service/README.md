@@ -1,9 +1,9 @@
 # `internal/service` - CF-Provisioner service layer
 
-This package is the **domain orchestration** layer for CF-Provisioner: it sits between a future HTTP
-layer (`internal/rest`, not wired here yet) and the **repository / infra clients** under
-`internal/repository/`. It encodes **workflows**, **async jobs**, and **cross-cutting rules** (ordering,
-naming, error mapping) so handlers stay thin.
+This package is the **domain orchestration** layer for CF-Provisioner: it sits between the HTTP layer
+([`internal/rest`](../rest/)) and the **repository / infra clients** under [`internal/repository/`](../repository/).
+It encodes **workflows**, **async jobs**, and **cross-cutting rules** (ordering, naming, error mapping)
+so handlers stay thin.
 
 ## Purpose
 
