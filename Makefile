@@ -34,7 +34,8 @@ MODULES := \
 	tools/migrations
 
 .PHONY: all help build test lint fmt verify codegen tidy work-sync migrate \
-	integration integration-scylladb integration-openbao clean
+	integration integration-scylladb integration-openbao clean \
+	k3d-up k3d-down k3d-install-deps k3d-kubeconfig
 
 # -----------------------------------------------------------------------------
 # all — Default target: compile every workspace module.
@@ -151,3 +152,28 @@ integration: integration-scylladb integration-openbao
 clean:
 	rm -f libs/scylladb/coverage.out libs/scylladb/integration_coverage.out
 	rm -f libs/openbao/coverage.out libs/openbao/integration_coverage.out
+
+# -----------------------------------------------------------------------------
+# k3d — Local Kubernetes host cluster (Task 19; requires k3d, kubectl, helm).
+# -----------------------------------------------------------------------------
+## k3d-up: create k3d cluster cloudforge-dev (idempotent; LB HTTP/HTTPS default 18080/18443; override CF_K3D_LB_HTTP_PORT / CF_K3D_LB_HTTPS_PORT)
+k3d-up:
+	bash dev/k8s/cluster-up.sh
+
+## k3d-install-deps: install Cilium, Envoy Gateway, vCluster operator, cert-manager, CloudForge namespace (uses k3d kubeconfig for Helm; optional: make k3d-kubeconfig for your default kubectl)
+k3d-install-deps: k3d-up
+	bash dev/k8s/install-cilium.sh
+	bash dev/k8s/install-envoy-gateway.sh
+	bash dev/k8s/install-vcluster.sh
+	bash dev/k8s/install-cert-manager.sh
+	bash dev/k8s/setup-cloudforge-namespace.sh
+	@echo "All k8s dependencies installed"
+
+## k3d-down: delete k3d cluster cloudforge-dev (idempotent)
+k3d-down:
+	bash dev/k8s/cluster-down.sh
+
+## k3d-kubeconfig: merge cloudforge-dev kubeconfig into your default kubeconfig
+k3d-kubeconfig:
+	k3d kubeconfig merge cloudforge-dev --kubeconfig-merge-default
+	@echo "Merged cloudforge-dev kubeconfig into default"

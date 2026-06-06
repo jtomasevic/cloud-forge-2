@@ -38,3 +38,4 @@ tools/bin/
 .DS_Store
 
 spec/
+/AGENTS.md
