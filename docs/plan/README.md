@@ -124,12 +124,12 @@ Once `tilt up` is running (Task 21), all CF services are live-reloaded on code c
 | CF-Accounts | `http://localhost:8081` | Account/tenant/network registry API |
 | CF-Provisioner | `http://localhost:8082` | Infrastructure provisioning API |
 | CF-Router | `http://localhost:8083` | Tenant-aware platform router (use this for all API calls) |
-| Envoy Gateway | `http://localhost:8080` | Edge gateway (routes to CF-Router) |
+| Envoy Gateway | `http://localhost:18080` | Edge gateway via k3d LB (routes to CF-Router; see Task 19 `CF_K3D_LB_HTTP_PORT`) |
 | Keycloak | `http://localhost:8084` | Identity (console: `/auth/admin`) |
 | ScyllaDB | `localhost:9042` | CQL (use `cqlsh localhost 9042`) |
 | OpenBao | `http://localhost:8200` | Secrets (token: `dev-root-token`) |
 
-All external API calls should go through CF-Router on port 8083 (or Envoy Gateway on 8080, which proxies to CF-Router).
+All external API calls should go through CF-Router on port 8083 (or Envoy Gateway on the k3d LB HTTP port, default 18080, which proxies to CF-Router).
 
 ---
 
