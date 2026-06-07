@@ -15,10 +15,10 @@ import (
 // running ScyllaDB. It records every statement passed to ExecCQL and allows
 // tests to configure which filenames are "already applied".
 type fakeQuerier struct {
-	applied    []string // filenames to return from SelectStrings
-	execCalls  []string // all statements passed to ExecCQL, in call order
-	execErr    error    // if set, ExecCQL returns this error
-	selectErr  error    // if set, SelectStrings returns this error
+	applied   []string // filenames to return from SelectStrings
+	execCalls []string // all statements passed to ExecCQL, in call order
+	execErr   error    // if set, ExecCQL returns this error
+	selectErr error    // if set, SelectStrings returns this error
 }
 
 func (f *fakeQuerier) ExecCQL(_ context.Context, stmt string) error {
@@ -191,6 +191,31 @@ func TestRunMigrations_MultiStatementFile(t *testing.T) {
 	}
 	if countB != 1 {
 		t.Errorf("expected table b statement once, got %d", countB)
+	}
+}
+
+func TestRunMigrations_SkipsUseStatements(t *testing.T) {
+	dir := t.TempDir()
+	writeCQL(t, dir, "001_use.cql",
+		"USE cloudforge;\n"+
+			"CREATE TABLE IF NOT EXISTS accounts (id UUID PRIMARY KEY);\n")
+
+	q := &fakeQuerier{}
+	err := migrate.RunMigrations(context.Background(), migrate.MigrationConfig{
+		Session:    q,
+		ScriptsDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("RunMigrations returned unexpected error: %v", err)
+	}
+
+	for _, call := range q.execCalls {
+		if strings.EqualFold(strings.TrimSpace(call), "USE cloudforge") {
+			t.Error("USE statements should not be executed by the migration runner")
+		}
+	}
+	if indexOf(q.execCalls, "CREATE TABLE IF NOT EXISTS accounts") == -1 {
+		t.Error("non-USE migration statement was not executed")
 	}
 }
 

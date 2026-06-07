@@ -93,6 +93,10 @@ func RunMigrations(ctx context.Context, cfg MigrationConfig) error {
 
 		statements := splitStatements(string(content))
 		for _, stmt := range statements {
+			if isUseStatement(stmt) {
+				continue
+			}
+
 			if err := cfg.Session.ExecCQL(ctx, stmt); err != nil {
 				return cferrors.Wrap(cferrors.CodeInternal,
 					fmt.Sprintf("failed to apply migration %s", filename), err)
@@ -126,4 +130,9 @@ func splitStatements(script string) []string {
 		}
 	}
 	return result
+}
+
+func isUseStatement(stmt string) bool {
+	fields := strings.Fields(stmt)
+	return len(fields) == 2 && strings.EqualFold(fields[0], "USE")
 }

@@ -35,7 +35,8 @@ MODULES := \
 
 .PHONY: all help build test lint fmt verify codegen tidy work-sync migrate \
 	integration integration-scylladb integration-openbao clean \
-	k3d-up k3d-down k3d-install-deps k3d-kubeconfig
+	dev-up dev-down dev-init dev-reset dev-kill \
+	k3d-up k3d-down k3d-install-deps k3d-kubeconfig dev-setup
 
 # -----------------------------------------------------------------------------
 # all — Default target: compile every workspace module.
@@ -132,6 +133,34 @@ migrate:
 	@$(MAKE) -C tools/migrations migrate
 
 # -----------------------------------------------------------------------------
+# dev backing services — Docker Compose services used by the local control plane.
+# -----------------------------------------------------------------------------
+## dev-up: start local ScyllaDB, OpenBao, and Keycloak backing services
+dev-up:
+	docker compose -f dev/docker-compose.yml up -d
+	@echo "Backing services started. Run 'make dev-init' to seed data."
+
+## dev-down: stop local backing services without deleting persisted data
+dev-down:
+	docker compose -f dev/docker-compose.yml down
+
+## dev-kill: stop local backing services without deleting persisted data and delete k3d cluster cloudforge-dev
+dev-kill: dev-down k3d-down
+
+## dev-init: start backing services, initialize OpenBao, and apply ScyllaDB migrations
+dev-init: dev-up
+	@echo "Waiting for services to be ready..."
+	@sleep 5
+	dev/scripts/init-openbao.sh
+	dev/scripts/init-scylladb.sh
+	@echo "Dev environment initialized"
+
+## dev-reset: stop backing services and delete all Docker Compose volumes
+dev-reset: dev-down
+	docker compose -f dev/docker-compose.yml down -v
+	@echo "Dev environment reset (all data deleted)"
+
+# -----------------------------------------------------------------------------
 # integration — Delegates to library Makefiles that start real dependencies.
 # -----------------------------------------------------------------------------
 ## integration-scylladb: ScyllaDB integration tests (testcontainers or SCYLLADB_HOST)
@@ -177,3 +206,9 @@ k3d-down:
 k3d-kubeconfig:
 	k3d kubeconfig merge cloudforge-dev --kubeconfig-merge-default
 	@echo "Merged cloudforge-dev kubeconfig into default"
+
+## dev-setup: initialize backing services and install the local k3d dependencies
+dev-setup:
+	$(MAKE) dev-init
+	$(MAKE) k3d-install-deps
+	@echo "Full dev environment initialized"
