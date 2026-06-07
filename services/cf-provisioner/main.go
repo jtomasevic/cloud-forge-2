@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -126,6 +127,12 @@ func splitHosts(s string) []string {
 
 func loadHostKubeconfig(path string) ([]byte, error) {
 	p := strings.TrimSpace(path)
+	if p == "in-cluster" {
+		return loadInClusterKubeconfig("/var/run/secrets/kubernetes.io/serviceaccount")
+	}
+	if p == "" && os.Getenv("KUBERNETES_SERVICE_HOST") != "" {
+		return loadInClusterKubeconfig("/var/run/secrets/kubernetes.io/serviceaccount")
+	}
 	if p == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -134,4 +141,46 @@ func loadHostKubeconfig(path string) ([]byte, error) {
 		p = filepath.Join(home, ".kube", "config")
 	}
 	return os.ReadFile(p)
+}
+
+func loadInClusterKubeconfig(serviceAccountDir string) ([]byte, error) {
+	host := strings.TrimSpace(os.Getenv("KUBERNETES_SERVICE_HOST"))
+	port := strings.TrimSpace(os.Getenv("KUBERNETES_SERVICE_PORT"))
+	if host == "" {
+		return nil, fmt.Errorf("KUBERNETES_SERVICE_HOST is required for in-cluster kubeconfig")
+	}
+	if port == "" {
+		port = "443"
+	}
+
+	tokenPath := filepath.Join(serviceAccountDir, "token")
+	caPath := filepath.Join(serviceAccountDir, "ca.crt")
+	token, err := os.ReadFile(tokenPath)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := os.Stat(caPath); err != nil {
+		return nil, err
+	}
+
+	kubeconfig := fmt.Sprintf(`apiVersion: v1
+kind: Config
+clusters:
+- name: in-cluster
+  cluster:
+    certificate-authority: %q
+    server: %q
+users:
+- name: serviceaccount
+  user:
+    token: %q
+contexts:
+- name: in-cluster
+  context:
+    cluster: in-cluster
+    user: serviceaccount
+current-context: in-cluster
+`, caPath, "https://"+host+":"+port, strings.TrimSpace(string(token)))
+
+	return []byte(kubeconfig), nil
 }

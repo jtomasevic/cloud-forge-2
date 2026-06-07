@@ -36,7 +36,8 @@ MODULES := \
 .PHONY: all help build test lint fmt verify codegen tidy work-sync migrate \
 	integration integration-scylladb integration-openbao clean \
 	dev-up dev-down dev-init dev-reset dev-kill \
-	k3d-up k3d-down k3d-install-deps k3d-kubeconfig dev-setup
+	k3d-up k3d-down k3d-install-deps k3d-kubeconfig \
+	dev dev-setup tilt-up tilt-down dev-tools require-tilt
 
 # -----------------------------------------------------------------------------
 # all — Default target: compile every workspace module.
@@ -160,6 +161,9 @@ dev-reset: dev-down
 	docker compose -f dev/docker-compose.yml down -v
 	@echo "Dev environment reset (all data deleted)"
 
+## dev: initialize the full local dev environment (backing services plus k3d dependencies)
+dev: dev-setup
+
 # -----------------------------------------------------------------------------
 # integration — Delegates to library Makefiles that start real dependencies.
 # -----------------------------------------------------------------------------
@@ -211,4 +215,31 @@ k3d-kubeconfig:
 dev-setup:
 	$(MAKE) dev-init
 	$(MAKE) k3d-install-deps
-	@echo "Full dev environment initialized"
+	@echo "Dev environment ready. Run 'make tilt-up' to start services."
+
+## tilt-up: start the Tilt local development loop
+tilt-up: require-tilt
+	tilt up
+
+## tilt-down: stop Tilt-managed resources
+tilt-down: require-tilt
+	tilt down
+
+require-tilt:
+	@command -v tilt >/dev/null 2>&1 || { \
+		echo "ERROR: Tilt is not installed or is not on PATH."; \
+		echo "Install it, then rerun 'make tilt-up'."; \
+		echo "macOS: brew install tilt-dev/tap/tilt"; \
+		echo "Other platforms: https://docs.tilt.dev/install.html"; \
+		exit 127; \
+	}
+
+## dev-tools: install Go dev tools and print manual tool install links
+dev-tools:
+	@echo "Installing dev tools..."
+	go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@latest
+	@echo "Install the following tools manually if not present:"
+	@echo "  k3d:     https://k3d.io/#installation"
+	@echo "  tilt:    https://docs.tilt.dev/install.html"
+	@echo "  helm:    https://helm.sh/docs/intro/install/"
+	@echo "  kubectl: https://kubernetes.io/docs/tasks/tools/"
