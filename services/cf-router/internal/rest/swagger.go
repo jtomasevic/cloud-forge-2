@@ -1,0 +1,308 @@
+package rest
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+
+	"github.com/jtomasevic/cloud-forge-2/services/cf-router/internal/rest/generated"
+	"gopkg.in/yaml.v3"
+)
+
+var (
+	routerSwaggerJSONOnce sync.Once
+	routerSwaggerJSON     []byte
+	routerSwaggerJSONErr  error
+)
+
+type publicSpecConfig struct {
+	ID              string
+	SourcePath      string
+	AllowedPrefixes []string
+	Proxied         bool
+}
+
+var publicSpecs = map[string]publicSpecConfig{
+	"cf-router": {
+		ID: "cf-router",
+	},
+	"cf-accounts": {
+		ID:              "cf-accounts",
+		SourcePath:      "api/cf-accounts/v1/openapi.yaml",
+		AllowedPrefixes: []string{"/v1/accounts", "/v1/tenants"},
+		Proxied:         true,
+	},
+	"cf-provisioner": {
+		ID:              "cf-provisioner",
+		SourcePath:      "api/cf-provisioner/v1/openapi.yaml",
+		AllowedPrefixes: []string{"/v1/networks", "/v1/jobs"},
+		Proxied:         true,
+	},
+}
+
+// NewSwaggerRouter serves the public, unauthenticated aggregated OpenAPI docs.
+func NewSwaggerRouter() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /", redirectToSwagger)
+	mux.HandleFunc("GET /swagger", redirectToSwagger)
+	mux.HandleFunc("GET /swagger/", serveSwaggerPage)
+	mux.HandleFunc("GET /openapi.json", serveRouterSwaggerJSON)
+	mux.HandleFunc("GET /swagger.json", serveRouterSwaggerJSON)
+	mux.HandleFunc("GET /openapi/cf-router.json", serveNamedSwaggerJSON("cf-router"))
+	mux.HandleFunc("GET /openapi/cf-accounts.json", serveNamedSwaggerJSON("cf-accounts"))
+	mux.HandleFunc("GET /openapi/cf-provisioner.json", serveNamedSwaggerJSON("cf-provisioner"))
+	return mux
+}
+
+func redirectToSwagger(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" && r.URL.Path != "/swagger" {
+		http.NotFound(w, r)
+		return
+	}
+	http.Redirect(w, r, "/swagger/", http.StatusTemporaryRedirect)
+}
+
+func serveSwaggerPage(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(swaggerPageHTML))
+}
+
+func serveRouterSwaggerJSON(w http.ResponseWriter, r *http.Request) {
+	serveSwaggerJSON(w, r, "cf-router")
+}
+
+func serveNamedSwaggerJSON(id string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		serveSwaggerJSON(w, r, id)
+	}
+}
+
+func serveSwaggerJSON(w http.ResponseWriter, _ *http.Request, id string) {
+	spec, err := publicSwaggerJSON(id)
+	if err != nil {
+		http.Error(w, "failed to load OpenAPI spec: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/vnd.oai.openapi+json;version=3.0")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write(spec)
+}
+
+func publicSwaggerJSON(id string) ([]byte, error) {
+	cfg, ok := publicSpecs[id]
+	if !ok {
+		return nil, fmt.Errorf("unknown public spec %q", id)
+	}
+	if id == "cf-router" {
+		return cfRouterSwaggerJSON()
+	}
+
+	data, err := readOpenAPIFile(cfg.SourcePath)
+	if err != nil {
+		return nil, err
+	}
+	var doc map[string]interface{}
+	if err := yaml.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("parse %s: %w", cfg.SourcePath, err)
+	}
+	preparePublicSpec(doc, cfg)
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal %s: %w", cfg.SourcePath, err)
+	}
+	return out, nil
+}
+
+func cfRouterSwaggerJSON() ([]byte, error) {
+	routerSwaggerJSONOnce.Do(func() {
+		spec, err := generated.GetSwagger()
+		if err != nil {
+			routerSwaggerJSONErr = err
+			return
+		}
+		routerSwaggerJSON, routerSwaggerJSONErr = json.MarshalIndent(spec, "", "  ")
+	})
+	return routerSwaggerJSON, routerSwaggerJSONErr
+}
+
+func readOpenAPIFile(relPath string) ([]byte, error) {
+	for _, path := range openAPIPathCandidates(relPath) {
+		data, err := os.ReadFile(path)
+		if err == nil {
+			return data, nil
+		}
+		if !os.IsNotExist(err) {
+			return nil, fmt.Errorf("read %s: %w", path, err)
+		}
+	}
+	return nil, fmt.Errorf("could not find %s", relPath)
+}
+
+func openAPIPathCandidates(relPath string) []string {
+	seen := map[string]struct{}{}
+	var candidates []string
+	add := func(path string) {
+		clean := filepath.Clean(path)
+		if _, ok := seen[clean]; ok {
+			return
+		}
+		seen[clean] = struct{}{}
+		candidates = append(candidates, clean)
+	}
+
+	if wd, err := os.Getwd(); err == nil {
+		for dir := wd; ; dir = filepath.Dir(dir) {
+			add(filepath.Join(dir, relPath))
+			if _, err := os.Stat(filepath.Join(dir, "go.work")); err == nil {
+				break
+			}
+			parent := filepath.Dir(dir)
+			if parent == dir {
+				break
+			}
+		}
+	}
+	add(filepath.Join("/", relPath))
+	return candidates
+}
+
+func preparePublicSpec(doc map[string]interface{}, cfg publicSpecConfig) {
+	doc["servers"] = []map[string]string{
+		{
+			"url":         "http://localhost:8083",
+			"description": "Local development via CF-Router",
+		},
+	}
+	filterPaths(doc, cfg.AllowedPrefixes)
+	if cfg.Proxied {
+		prepareProxiedSecurity(doc)
+		appendInfoDescription(doc, "\n\nThis public development spec is served through CF-Router. Use `http://localhost:8083` as the API server; CF-Router validates Bearer JWTs or `X-CF-API-Key` and injects internal service headers before proxying.")
+	}
+}
+
+func filterPaths(doc map[string]interface{}, prefixes []string) {
+	if len(prefixes) == 0 {
+		return
+	}
+	paths, ok := doc["paths"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	for path := range paths {
+		if !pathHasAnyPrefix(path, prefixes) {
+			delete(paths, path)
+		}
+	}
+}
+
+func pathHasAnyPrefix(path string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if path == prefix || strings.HasPrefix(path, prefix+"/") || strings.HasPrefix(path, prefix+"{") {
+			return true
+		}
+	}
+	return false
+}
+
+func prepareProxiedSecurity(doc map[string]interface{}) {
+	components := ensureMap(doc, "components")
+	securitySchemes := ensureMap(components, "securitySchemes")
+	securitySchemes["BearerAuth"] = map[string]interface{}{
+		"type":         "http",
+		"scheme":       "bearer",
+		"bearerFormat": "JWT",
+		"description":  "JWT issued by Keycloak and validated by CF-Router before proxying.",
+	}
+	securitySchemes["ApiKeyAuth"] = map[string]interface{}{
+		"type":        "apiKey",
+		"in":          "header",
+		"name":        "X-CF-API-Key",
+		"description": "CloudForge API key validated by CF-Router before proxying.",
+	}
+	delete(securitySchemes, "InternalSecret")
+
+	doc["security"] = []map[string][]string{
+		{"BearerAuth": {}},
+		{"ApiKeyAuth": {}},
+	}
+}
+
+func ensureMap(parent map[string]interface{}, key string) map[string]interface{} {
+	if existing, ok := parent[key].(map[string]interface{}); ok {
+		return existing
+	}
+	next := map[string]interface{}{}
+	parent[key] = next
+	return next
+}
+
+func appendInfoDescription(doc map[string]interface{}, suffix string) {
+	info, ok := doc["info"].(map[string]interface{})
+	if !ok {
+		return
+	}
+	description, _ := info["description"].(string)
+	if strings.Contains(description, suffix) {
+		return
+	}
+	info["description"] = strings.TrimRight(description, " \n") + suffix
+}
+
+const swaggerPageHTML = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CloudForge API Swagger</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; background: #fff; }
+    #fallback { display: none; margin: 24px; font: 16px/1.5 system-ui, sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="swagger-ui"></div>
+  <div id="fallback">
+    Swagger UI assets did not load. Raw OpenAPI documents are available at
+    <a href="/openapi/cf-router.json">CF-Router</a>,
+    <a href="/openapi/cf-accounts.json">CF-Accounts</a>, and
+    <a href="/openapi/cf-provisioner.json">CF-Provisioner</a>.
+  </div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
+  <script>
+    window.addEventListener("load", function () {
+      if (!window.SwaggerUIBundle || !window.SwaggerUIStandalonePreset) {
+        document.getElementById("fallback").style.display = "block";
+        return;
+      }
+      window.ui = window.SwaggerUIBundle({
+        urls: [
+          { url: "/openapi/cf-accounts.json", name: "CF-Accounts via CF-Router" },
+          { url: "/openapi/cf-provisioner.json", name: "CF-Provisioner via CF-Router" },
+          { url: "/openapi/cf-router.json", name: "CF-Router native endpoints" }
+        ],
+        "urls.primaryName": "CF-Accounts via CF-Router",
+        dom_id: "#swagger-ui",
+        deepLinking: true,
+        persistAuthorization: true,
+        tryItOutEnabled: true,
+        presets: [
+          window.SwaggerUIBundle.presets.apis,
+          window.SwaggerUIStandalonePreset
+        ],
+        plugins: [
+          window.SwaggerUIBundle.plugins.DownloadUrl
+        ],
+        layout: "StandaloneLayout"
+      });
+    });
+  </script>
+</body>
+</html>
+`

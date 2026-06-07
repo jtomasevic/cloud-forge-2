@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -21,6 +23,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	httpAddr := envOr("HTTP_ADDR", ":8083")
+	swaggerAddr := envOr("SWAGGER_ADDR", ":8090")
 	scyllaHosts := envOr("SCYLLADB_HOSTS", "localhost:9042")
 	keyspace := envOr("SCYLLADB_KEYSPACE", "cloudforge")
 	cfAccountsURL := strings.TrimRight(envOr("CF_ACCOUNTS_URL", "http://localhost:8081"), "/")
@@ -28,6 +31,7 @@ func main() {
 	internalSecret := envOr("CF_INTERNAL_SECRET", "dev-internal-secret")
 	jwksURL := envOr("KEYCLOAK_JWKS_URL", "http://localhost:8084/auth/realms/cloudforge/protocol/openid-connect/certs")
 	jwtIssuer := envOr("KEYCLOAK_ISSUER", "")
+	corsAllowedOrigins := splitList(envOr("CORS_ALLOWED_ORIGINS", "http://localhost:8090,http://127.0.0.1:8090"))
 
 	session, err := scylladbclient.New(context.Background(), scylladbclient.Config{
 		Hosts:    splitHosts(scyllaHosts),
@@ -54,7 +58,9 @@ func main() {
 		InternalSecret:    internalSecret,
 	})
 	h := rest.NewHandler(svc, routes, internalSecret)
-	router := rest.NewRouter(h)
+	router := rest.WithCORS(rest.NewRouter(h), rest.CORSConfig{
+		AllowedOrigins: corsAllowedOrigins,
+	})
 
 	srv := &http.Server{
 		Addr:         httpAddr,
@@ -64,10 +70,54 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	apiListener, err := net.Listen("tcp", httpAddr)
+	if err != nil {
+		slog.Error("failed to listen for cf-router api", "addr", httpAddr, "error", err)
+		os.Exit(1)
+	}
+
+	errCh := make(chan error, 2)
+
+	if !swaggerServerDisabled(swaggerAddr) {
+		swaggerSrv := &http.Server{
+			Addr:         swaggerAddr,
+			Handler:      rest.NewSwaggerRouter(),
+			ReadTimeout:  10 * time.Second,
+			WriteTimeout: 10 * time.Second,
+			IdleTimeout:  60 * time.Second,
+		}
+		swaggerListener, err := net.Listen("tcp", swaggerAddr)
+		if err != nil {
+			slog.Error("failed to listen for cf-router swagger", "addr", swaggerAddr, "error", err)
+			os.Exit(1)
+		}
+		go serveHTTP("cf-router swagger", swaggerSrv, swaggerListener, errCh)
+	}
+
+	go serveHTTP("cf-router api", srv, apiListener, errCh)
+
 	slog.Info("cf-router listening", "addr", httpAddr, "keyspace", keyspace)
-	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if !swaggerServerDisabled(swaggerAddr) {
+		slog.Info("cf-router swagger listening", "addr", swaggerAddr)
+	}
+	if err := <-errCh; err != nil {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
+	}
+}
+
+func serveHTTP(name string, srv *http.Server, listener net.Listener, errCh chan<- error) {
+	if err := srv.Serve(listener); err != nil && err != http.ErrServerClosed {
+		errCh <- fmt.Errorf("%s: %w", name, err)
+	}
+}
+
+func swaggerServerDisabled(addr string) bool {
+	switch strings.ToLower(strings.TrimSpace(addr)) {
+	case "", "off", "disabled", "false":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -79,6 +129,14 @@ func envOr(key, def string) string {
 }
 
 func splitHosts(s string) []string {
+	out := splitList(s)
+	if len(out) == 0 {
+		return []string{"localhost:9042"}
+	}
+	return out
+}
+
+func splitList(s string) []string {
 	parts := strings.FieldsFunc(s, func(r rune) bool {
 		return r == ',' || r == ';' || r == ' '
 	})
@@ -88,9 +146,6 @@ func splitHosts(s string) []string {
 		if p != "" {
 			out = append(out, p)
 		}
-	}
-	if len(out) == 0 {
-		return []string{"localhost:9042"}
 	}
 	return out
 }

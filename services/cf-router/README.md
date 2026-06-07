@@ -167,6 +167,7 @@ and upstream URLs consistent with your route table.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HTTP_ADDR` | `:8083` | HTTP listen address |
+| `SWAGGER_ADDR` | `:8090` | Public, unauthenticated Swagger/OpenAPI docs listen address. Set to `off` to disable. |
 | `SCYLLADB_HOSTS` | `localhost:9042` | Scylla contact points (comma / space / semicolon separated) |
 | `SCYLLADB_KEYSPACE` | `cloudforge` | Keyspace name |
 | `CF_ACCOUNTS_URL` | `http://localhost:8081` | CF-Accounts base URL (routing + HTTP client) |
@@ -174,6 +175,7 @@ and upstream URLs consistent with your route table.
 | `CF_INTERNAL_SECRET` | `dev-internal-secret` | Sent to CF-Accounts resolve; injected on proxied upstream requests; validates `/internal/routes` |
 | `KEYCLOAK_JWKS_URL` | `http://localhost:8084/auth/realms/cloudforge/protocol/openid-connect/certs` | JWKS document for RS256 JWT verification |
 | `KEYCLOAK_ISSUER` | *(empty)* | If set, JWT `iss` claim must match exactly |
+| `CORS_ALLOWED_ORIGINS` | `http://localhost:8090,http://127.0.0.1:8090` | Origins allowed to call the API port from the public Swagger UI |
 
 ---
 
@@ -189,6 +191,17 @@ Regenerates:
 - `libs/clients/cf-router/v1/client.gen.go` (optional HTTP client for downstream tools)
 
 Source spec: [`api/cf-router/v1/openapi.yaml`](../../api/cf-router/v1/openapi.yaml).
+
+When CF-Router is running, public aggregated docs are available without
+credentials at `http://localhost:8090/swagger/`. The Swagger UI contains specs
+for CF-Router native endpoints plus CF-Accounts and CF-Provisioner routes as
+they are exposed through CF-Router on `http://localhost:8083`.
+
+Raw OpenAPI documents:
+
+- `http://localhost:8090/openapi/cf-router.json`
+- `http://localhost:8090/openapi/cf-accounts.json`
+- `http://localhost:8090/openapi/cf-provisioner.json`
 
 ---
 

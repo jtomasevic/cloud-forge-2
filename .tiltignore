@@ -1,0 +1,10 @@
+# Ignore build artifacts
+bin/
+tools/bin/
+
+# Ignore generated files (they are rebuilt by codegen, not Tilt)
+**/generated/*.gen.go
+**/clients/**/*.gen.go
+
+# Ignore test output
+**/*_test.go

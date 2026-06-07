@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cf-provisioner
+  namespace: cloudforge-control-plane
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cf-provisioner
+  template:
+    metadata:
+      labels:
+        app: cf-provisioner
+    spec:
+      containers:
+        - name: cf-provisioner
+          image: ghcr.io/jtomasevic/cloud-forge-2/cf-provisioner
+          ports:
+            - containerPort: 8082
+          env:
+            - name: HTTP_ADDR
+              value: ":8082"
+            - name: SCYLLADB_HOSTS
+              value: "host.k3d.internal:9042"
+            - name: SCYLLADB_KEYSPACE
+              value: "cloudforge"
+            - name: OPENBAO_ADDR
+              value: "http://host.k3d.internal:8200"
+            - name: OPENBAO_TOKEN
+              value: "dev-root-token"
+            - name: CF_INTERNAL_SECRET
+              value: "dev-internal-secret"
+            - name: HOST_KUBECONFIG
+              value: "in-cluster"
+          readinessProbe:
+            httpGet:
+              path: /v1/cidr/allocations
+              port: 8082
+              httpHeaders:
+                - name: X-CF-Internal-Secret
+                  value: dev-internal-secret
+            initialDelaySeconds: 5
+            periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cf-provisioner
+  namespace: cloudforge-control-plane
+spec:
+  selector:
+    app: cf-provisioner
+  ports:
+    - port: 8082
+      targetPort: 8082
