@@ -1,0 +1,52 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: cf-router
+  namespace: cloudforge-control-plane
+spec:
+  parentRefs:
+    - name: cloudforge-gateway
+      namespace: envoy-gateway-system
+  hostnames:
+    - api.cloudforge.local
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1
+      backendRefs:
+        - name: cf-router
+          port: 8083
+    - matches:
+        - path:
+            type: Exact
+            value: /health
+      backendRefs:
+        - name: cf-router
+          port: 8083
+    - matches:
+        - path:
+            type: Exact
+            value: /ready
+      backendRefs:
+        - name: cf-router
+          port: 8083
+    - matches:
+        - path:
+            type: Exact
+            value: /swagger
+        - path:
+            type: PathPrefix
+            value: /swagger/
+        - path:
+            type: PathPrefix
+            value: /openapi
+        - path:
+            type: Exact
+            value: /openapi.json
+        - path:
+            type: Exact
+            value: /swagger.json
+      backendRefs:
+        - name: cf-router
+          port: 8090

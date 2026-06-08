@@ -26,6 +26,8 @@ spec:
               value: ":8083"
             - name: SWAGGER_ADDR
               value: ":8090"
+            - name: SWAGGER_API_BASE_URL
+              value: "/"
             - name: SCYLLADB_HOSTS
               value: "host.k3d.internal:9042"
             - name: SCYLLADB_KEYSPACE
@@ -39,7 +41,7 @@ spec:
             - name: KEYCLOAK_JWKS_URL
               value: "http://host.k3d.internal:8084/auth/realms/cloudforge/protocol/openid-connect/certs"
             - name: CORS_ALLOWED_ORIGINS
-              value: "http://localhost:8090,http://127.0.0.1:8090"
+              value: "http://localhost:8090,http://127.0.0.1:8090,http://api.cloudforge.local:18080"
           readinessProbe:
             httpGet:
               path: /health

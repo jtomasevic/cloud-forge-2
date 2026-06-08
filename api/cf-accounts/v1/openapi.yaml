@@ -114,6 +114,45 @@ components:
           maxLength: 72
           description: Plaintext password (same minimum length as signup; never stored or returned).
 
+    LoginResponse:
+      type: object
+      description: >
+        Successful password login result. The access token is issued by Keycloak
+        and includes the `cf_account_id` claim used by CF-Router for tenant
+        resolution.
+      required: [accessToken, tokenType, expiresIn, account]
+      properties:
+        accessToken:
+          type: string
+          description: >
+            Bearer JWT issued by Keycloak. Treat as secret client-side credential
+            material and send it as `Authorization: Bearer <token>`.
+        tokenType:
+          type: string
+          example: Bearer
+          description: OAuth token type returned by Keycloak.
+        expiresIn:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Access token lifetime in seconds.
+        refreshToken:
+          type: string
+          description: Optional refresh token when enabled for the login client.
+        refreshExpiresIn:
+          type: integer
+          format: int32
+          minimum: 0
+          description: Optional refresh token lifetime in seconds.
+        idToken:
+          type: string
+          description: Optional OpenID Connect ID token when returned by Keycloak.
+        scope:
+          type: string
+          description: Optional OAuth scope string returned by Keycloak.
+        account:
+          $ref: '#/components/schemas/Account'
+
     AccountList:
       type: object
       description: Paginated list of accounts.
@@ -514,9 +553,10 @@ paths:
       operationId: loginWithPassword
       summary: Log in with email and password
       description: >
-        Verifies the email and password against the stored bcrypt hash and returns
-        the account on success. On failure the response is generic (401) so
-        callers cannot distinguish unknown emails from wrong passwords.
+        Authenticates the email and password through Keycloak and returns a token
+        response with the active CloudForge account. On failure the response is
+        generic (401) so callers cannot distinguish unknown emails, wrong
+        passwords, inactive accounts, or invalid identity-provider state.
       tags: [Auth]
       security: []
       requestBody:
@@ -527,11 +567,11 @@ paths:
               $ref: '#/components/schemas/LoginRequest'
       responses:
         "200":
-          description: Login succeeded; returns the authenticated account.
+          description: Login succeeded; returns Keycloak token data and account details.
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Account'
+                $ref: '#/components/schemas/LoginResponse'
         "400":
           $ref: '#/components/responses/BadRequest'
         "401":
@@ -548,8 +588,9 @@ paths:
       description: >
         Registers a new customer account in CF-Accounts. The email address
         must be unique. Returns the created account and the default tenant
-        (id, slug, status) provisioned at signup.
+        (id, slug, status) created at signup.
       tags: [Accounts]
+      security: []
       requestBody:
         required: true
         content:
@@ -576,7 +617,7 @@ paths:
                   id: "b1b2c3d4-0000-0000-0000-000000000001"
                   accountId: "a1b2c3d4-0000-0000-0000-000000000001"
                   slug: "customer"
-                  status: "provisioning"
+                  status: "active"
                   createdAt: "2026-01-15T10:00:00Z"
         "400":
           $ref: '#/components/responses/BadRequest'

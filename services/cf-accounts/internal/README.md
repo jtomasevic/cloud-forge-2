@@ -72,7 +72,7 @@ Rules:
 Rules:
 - Business logic only — no HTTP types, no raw DB types.
 - The service coordinates repositories; handlers do not.
-- **Passwords**: plaintext passwords exist only on the service boundary (`CreateAccountParams`, `LoginWithPasswordParams`). They are validated, hashed with **bcrypt** (`golang.org/x/crypto/bcrypt`), and persisted as `password_hash` via the accounts repository. The public `Account` model never carries a password or hash.
+- **Passwords**: plaintext passwords exist only on the service boundary (`CreateAccountParams`, `LoginWithPasswordParams`). Signup validates and hashes them for the existing `password_hash` column while also creating the Keycloak user. Login authenticates through the identity provider and uses the returned `cf_account_id` claim to load the active CloudForge account. The public `Account` model never carries a password or hash.
 - The concrete struct is named `CF<InterfaceName>` (e.g. `CFAccountsService`).
 - `New()` returns the interface type, never the concrete type.
 
@@ -105,7 +105,8 @@ main.go
   └─► AccountRepo    ─┐
       TenantRepo      ├─► CFAccountsService ──► Handler ──► net/http mux
       NetworkRepo     │
-      CredentialsRepo ─┘
+      CredentialsRepo ┤
+      IdentityProvider ┘
 ```
 
 `main.go` is the **only place** that knows the full object graph.
@@ -128,9 +129,10 @@ POST /v1/accounts
             validates email + password length (see password.go)
             checks email not already registered (accountsRepo.GetByEmail)
             bcrypt-hashes password → password_hash
-            inserts account row (accountsRepo.Insert)
             derives default tenant slug from email local part; ensures uniqueness (tenantsRepo.GetBySlug loop)
-            inserts default tenant row in "provisioning" (tenantsRepo.Insert)
+            creates Keycloak user with cf_account_id attribute (identityProvider.CreateUser)
+            inserts account row (accountsRepo.Insert)
+            inserts default tenant row in "active" (tenantsRepo.Insert)
             returns service.CreateAccountResult{ Account, DefaultTenant }
         │
       maps CreateAccountResult → generated.CreateAccount201JSONResponse
@@ -152,12 +154,14 @@ POST /v1/auth/login   (OpenAPI: no BearerAuth — security: [])
       calls AccountsService.LoginWithPassword(ctx, params)
         │
         ▼ service.LoginWithPassword
-            loads account by email (accountsRepo.GetByEmail; row includes password_hash)
-            rejects if missing hash, inactive account, or bcrypt compare fails
-            on mismatch uses ErrInvalidCredentials (same sentinel for unknown email)
-            returns service.Account on success
+            authenticates password through identity provider
+            reads cf_account_id from returned token set
+            loads account by ID (accountsRepo.GetByID)
+            rejects inactive account or token/account mismatch
+            on mismatch uses ErrInvalidCredentials (same sentinel for unknown email, wrong password, or identity/account mismatch)
+            returns service.LoginResult on success
         │
-      maps Account → JSON; 401 on ErrInvalidCredentials
+      maps LoginResult → JSON; 401 on ErrInvalidCredentials
 ```
 
 ---
@@ -169,7 +173,7 @@ POST /v1/auth/login   (OpenAPI: no BearerAuth — security: [])
 | Signup body | `CreateAccountRequest` (`email`, `password`) | `CreateAccountParams` |
 | Signup response | `CreateAccountResult` (`account`, `defaultTenant`) | `CreateAccountResult` |
 | Login body | `LoginRequest` | `LoginWithPasswordParams` |
-| Login response | `Account` | `Account` |
+| Login response | `LoginResponse` (`accessToken`, token metadata, `account`) | `LoginResult` |
 
 Regenerate stubs after changing `api/cf-accounts/v1/openapi.yaml`:
 

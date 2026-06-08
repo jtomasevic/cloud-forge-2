@@ -1,0 +1,64 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 3 * * *"
+
+env:
+  GO_VERSION: "1.26.x"
+
+jobs:
+  unit-test:
+    name: Unit tests (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - services/cf-router
+          - services/cf-accounts
+          - services/cf-provisioner
+          - libs/cloudforge-core
+          - libs/scylladb
+          - libs/openbao
+          - libs/clients/cf-accounts
+          - libs/clients/cf-provisioner
+          - libs/clients/cf-router
+          - tools/cf-cli
+          - tools/migrations
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            **/go.sum
+      - name: Run unit tests
+        run: |
+          packages="$(go list ./... 2>/dev/null)"
+          if [ -z "${packages}" ]; then
+            echo "No Go packages in ${{ matrix.module }}; skipping tests"
+            exit 0
+          fi
+          go test -race -count=1 -timeout=90s ./...
+        working-directory: ${{ matrix.module }}
+
+  integration-test:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' || github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            **/go.sum
+      - name: Run ScyllaDB integration tests
+        run: make integration-scylladb
+      - name: Run OpenBao integration tests
+        run: make integration-openbao

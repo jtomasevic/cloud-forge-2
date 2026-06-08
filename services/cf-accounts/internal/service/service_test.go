@@ -11,16 +11,54 @@ import (
 	"github.com/gocql/gocql"
 	"github.com/google/uuid"
 	"go.uber.org/mock/gomock"
-	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/crypto/blake2b"
 
 	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 	accountsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/accounts"
 	credentialsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/credentials"
+	identityrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/identity"
 	networksrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/networks"
 	tenantsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/tenants"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/service/mocks"
 )
+
+type fakeIdentityProvider struct {
+	createParams       []identityrepo.CreateUserParams
+	createErr          error
+	createID           string
+	deleteIDs          []string
+	authenticateParams []identityrepo.AuthenticatePasswordParams
+	authenticateResult identityrepo.TokenSet
+	authenticateErr    error
+}
+
+func (f *fakeIdentityProvider) CreateUser(ctx context.Context, params identityrepo.CreateUserParams) (identityrepo.User, error) {
+	_ = ctx
+	f.createParams = append(f.createParams, params)
+	if f.createErr != nil {
+		return identityrepo.User{}, f.createErr
+	}
+	id := f.createID
+	if id == "" {
+		id = params.ID
+	}
+	return identityrepo.User{ID: id, Email: params.Email}, nil
+}
+
+func (f *fakeIdentityProvider) DeleteUser(ctx context.Context, id string) error {
+	_ = ctx
+	f.deleteIDs = append(f.deleteIDs, id)
+	return nil
+}
+
+func (f *fakeIdentityProvider) AuthenticatePassword(ctx context.Context, params identityrepo.AuthenticatePasswordParams) (identityrepo.TokenSet, error) {
+	_ = ctx
+	f.authenticateParams = append(f.authenticateParams, params)
+	if f.authenticateErr != nil {
+		return identityrepo.TokenSet{}, f.authenticateErr
+	}
+	return f.authenticateResult, nil
+}
 
 func TestCreateAccount_ErrAccountEmailTaken(t *testing.T) {
 	ctrl := gomock.NewController(t)
@@ -69,11 +107,105 @@ func TestCreateAccount_CreatesDefaultTenantSlugFromEmail(t *testing.T) {
 	if out.DefaultTenant.Slug != wantSlug {
 		t.Fatalf("tenant slug: want %q, got %q", wantSlug, out.DefaultTenant.Slug)
 	}
-	if out.DefaultTenant.Status != "provisioning" {
-		t.Fatalf("tenant status: want provisioning, got %q", out.DefaultTenant.Status)
+	if out.DefaultTenant.Status != "active" {
+		t.Fatalf("tenant status: want active, got %q", out.DefaultTenant.Status)
 	}
 	if out.Account.Email != "Alice.User+tag@Example.com" {
 		t.Fatalf("account email: got %q", out.Account.Email)
+	}
+}
+
+func TestCreateAccount_CreatesIdentityUser(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	ma := mocks.NewMockAccountsRepository(ctrl)
+	ma.EXPECT().
+		GetByEmail(gomock.Any(), "new@example.com").
+		Return(accountsrepo.AccountRow{}, accountsrepo.ErrAccountNotFound)
+	ma.EXPECT().
+		Insert(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	mt := mocks.NewMockTenantsRepository(ctrl)
+	mt.EXPECT().
+		GetBySlug(gomock.Any(), "new").
+		Return(tenantsrepo.TenantRow{}, tenantsrepo.ErrTenantNotFound)
+	mt.EXPECT().
+		Insert(gomock.Any(), gomock.Any()).
+		Return(nil)
+
+	idp := &fakeIdentityProvider{createID: "keycloak-user-id"}
+	svc := New(Deps{Accounts: ma, Tenants: mt, Identity: idp})
+
+	out, err := svc.CreateAccount(context.Background(), CreateAccountParams{Email: "new@example.com", Password: "longpassword1"})
+	if err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	if len(idp.createParams) != 1 {
+		t.Fatalf("identity CreateUser calls: got %d want 1", len(idp.createParams))
+	}
+	got := idp.createParams[0]
+	if got.ID != out.Account.ID || got.AccountID != out.Account.ID {
+		t.Fatalf("identity ids not linked to account: params=%+v account=%+v", got, out.Account)
+	}
+	if got.Email != "new@example.com" || got.Password != "longpassword1" {
+		t.Fatalf("identity user params mismatch: %+v", got)
+	}
+	if out.DefaultTenant.Status != "active" {
+		t.Fatalf("tenant status: want active, got %q", out.DefaultTenant.Status)
+	}
+}
+
+func TestCreateAccount_IdentityConflictReturnsEmailTaken(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	ma := mocks.NewMockAccountsRepository(ctrl)
+	ma.EXPECT().
+		GetByEmail(gomock.Any(), "new@example.com").
+		Return(accountsrepo.AccountRow{}, accountsrepo.ErrAccountNotFound)
+
+	mt := mocks.NewMockTenantsRepository(ctrl)
+	mt.EXPECT().
+		GetBySlug(gomock.Any(), "new").
+		Return(tenantsrepo.TenantRow{}, tenantsrepo.ErrTenantNotFound)
+
+	idp := &fakeIdentityProvider{createErr: identityrepo.ErrUserExists}
+	svc := New(Deps{Accounts: ma, Tenants: mt, Identity: idp})
+
+	_, err := svc.CreateAccount(context.Background(), CreateAccountParams{Email: "new@example.com", Password: "longpassword1"})
+	if !errors.Is(err, ErrAccountEmailTaken) {
+		t.Fatalf("expected ErrAccountEmailTaken, got %v", err)
+	}
+}
+
+func TestCreateAccount_RollsBackIdentityWhenAccountInsertFails(t *testing.T) {
+	ctrl := gomock.NewController(t)
+
+	ma := mocks.NewMockAccountsRepository(ctrl)
+	ma.EXPECT().
+		GetByEmail(gomock.Any(), "new@example.com").
+		Return(accountsrepo.AccountRow{}, accountsrepo.ErrAccountNotFound)
+	ma.EXPECT().
+		Insert(gomock.Any(), gomock.Any()).
+		Return(cferrors.ErrInternal)
+
+	mt := mocks.NewMockTenantsRepository(ctrl)
+	mt.EXPECT().
+		GetBySlug(gomock.Any(), "new").
+		Return(tenantsrepo.TenantRow{}, tenantsrepo.ErrTenantNotFound)
+
+	idp := &fakeIdentityProvider{createID: "keycloak-user-id"}
+	svc := New(Deps{Accounts: ma, Tenants: mt, Identity: idp})
+
+	_, err := svc.CreateAccount(context.Background(), CreateAccountParams{Email: "new@example.com", Password: "longpassword1"})
+	if !errors.Is(err, cferrors.ErrInternal) {
+		t.Fatalf("expected ErrInternal, got %v", err)
+	}
+	if len(idp.createParams) != 1 {
+		t.Fatalf("identity CreateUser calls: got %d want 1", len(idp.createParams))
+	}
+	if len(idp.deleteIDs) != 1 || idp.deleteIDs[0] != "keycloak-user-id" {
+		t.Fatalf("identity rollback delete IDs: got %#v create=%#v", idp.deleteIDs, idp.createParams)
 	}
 }
 
@@ -92,52 +224,172 @@ func TestCreateAccount_ShortPassword(t *testing.T) {
 
 func TestLoginWithPassword_Success(t *testing.T) {
 	ctrl := gomock.NewController(t)
-	hash, err := bcrypt.GenerateFromPassword([]byte("right-password1"), bcrypt.DefaultCost)
+	accountID := uuid.New().String()
+	uid, err := gocql.ParseUUID(accountID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	uid := gocql.TimeUUID()
+
 	ma := mocks.NewMockAccountsRepository(ctrl)
 	ma.EXPECT().
-		GetByEmail(gomock.Any(), "ok@example.com").
+		GetByID(gomock.Any(), accountID).
 		Return(accountsrepo.AccountRow{
-			ID:           uid,
-			Email:        "ok@example.com",
-			Status:       "active",
-			PasswordHash: string(hash),
+			ID:     uid,
+			Email:  "ok@example.com",
+			Status: "active",
 		}, nil)
 
-	svc := New(Deps{Accounts: ma})
-	acc, err := svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
+	idp := &fakeIdentityProvider{authenticateResult: identityrepo.TokenSet{
+		AccessToken:      "access-token",
+		RefreshToken:     "refresh-token",
+		IDToken:          "id-token",
+		TokenType:        "Bearer",
+		Scope:            "openid email",
+		ExpiresIn:        300,
+		RefreshExpiresIn: 1800,
+		AccountID:        accountID,
+		Subject:          "keycloak-user-id",
+		Email:            "OK@example.com",
+	}}
+	svc := New(Deps{Accounts: ma, Identity: idp})
+	out, err := svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
 		Email:    "ok@example.com",
 		Password: "right-password1",
 	})
 	if err != nil {
 		t.Fatalf("LoginWithPassword: %v", err)
 	}
-	if acc.ID != uid.String() || acc.Email != "ok@example.com" {
-		t.Fatalf("unexpected account: %+v", acc)
+	if len(idp.authenticateParams) != 1 || idp.authenticateParams[0].Email != "ok@example.com" || idp.authenticateParams[0].Password != "right-password1" {
+		t.Fatalf("identity authenticate params: %+v", idp.authenticateParams)
+	}
+	if out.AccessToken != "access-token" || out.RefreshToken != "refresh-token" || out.IDToken != "id-token" || out.TokenType != "Bearer" || out.ExpiresIn != 300 || out.RefreshExpiresIn != 1800 {
+		t.Fatalf("unexpected token result: %+v", out)
+	}
+	if out.Account.ID != uid.String() || out.Account.Email != "ok@example.com" {
+		t.Fatalf("unexpected account: %+v", out.Account)
 	}
 }
 
 func TestLoginWithPassword_WrongPassword(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	hash, err := bcrypt.GenerateFromPassword([]byte("other"), bcrypt.DefaultCost)
-	if err != nil {
-		t.Fatal(err)
-	}
-	ma := mocks.NewMockAccountsRepository(ctrl)
-	ma.EXPECT().
-		GetByEmail(gomock.Any(), "ok@example.com").
-		Return(accountsrepo.AccountRow{PasswordHash: string(hash), Status: "active"}, nil)
-
-	svc := New(Deps{Accounts: ma})
-	_, err = svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
+	idp := &fakeIdentityProvider{authenticateErr: identityrepo.ErrAuthenticationFailed}
+	svc := New(Deps{Identity: idp})
+	_, err := svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
 		Email:    "ok@example.com",
 		Password: "wrong-password1",
 	})
 	if !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestLoginWithPassword_InactiveAccount(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	accountID := uuid.New().String()
+	uid, err := gocql.ParseUUID(accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ma := mocks.NewMockAccountsRepository(ctrl)
+	ma.EXPECT().
+		GetByID(gomock.Any(), accountID).
+		Return(accountsrepo.AccountRow{
+			ID:     uid,
+			Email:  "ok@example.com",
+			Status: "suspended",
+		}, nil)
+
+	idp := &fakeIdentityProvider{authenticateResult: identityrepo.TokenSet{
+		AccessToken: "access-token",
+		TokenType:   "Bearer",
+		AccountID:   accountID,
+		Email:       "ok@example.com",
+	}}
+	svc := New(Deps{Accounts: ma, Identity: idp})
+	_, err = svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
+		Email:    "ok@example.com",
+		Password: "right-password1",
+	})
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestLoginWithPassword_TokenEmailMismatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	accountID := uuid.New().String()
+	uid, err := gocql.ParseUUID(accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ma := mocks.NewMockAccountsRepository(ctrl)
+	ma.EXPECT().
+		GetByID(gomock.Any(), accountID).
+		Return(accountsrepo.AccountRow{
+			ID:     uid,
+			Email:  "ok@example.com",
+			Status: "active",
+		}, nil)
+
+	idp := &fakeIdentityProvider{authenticateResult: identityrepo.TokenSet{
+		AccessToken: "access-token",
+		TokenType:   "Bearer",
+		AccountID:   accountID,
+		Email:       "other@example.com",
+	}}
+	svc := New(Deps{Accounts: ma, Identity: idp})
+	_, err = svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
+		Email:    "ok@example.com",
+		Password: "right-password1",
+	})
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestLoginWithPassword_TokenAccountMismatch(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	tokenAccountID := uuid.New().String()
+	otherAccountID := uuid.New().String()
+	otherUID, err := gocql.ParseUUID(otherAccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ma := mocks.NewMockAccountsRepository(ctrl)
+	ma.EXPECT().
+		GetByID(gomock.Any(), tokenAccountID).
+		Return(accountsrepo.AccountRow{
+			ID:     otherUID,
+			Email:  "ok@example.com",
+			Status: "active",
+		}, nil)
+
+	idp := &fakeIdentityProvider{authenticateResult: identityrepo.TokenSet{
+		AccessToken: "access-token",
+		TokenType:   "Bearer",
+		AccountID:   tokenAccountID,
+		Email:       "ok@example.com",
+	}}
+	svc := New(Deps{Accounts: ma, Identity: idp})
+	_, err = svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
+		Email:    "ok@example.com",
+		Password: "right-password1",
+	})
+	if !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("expected ErrInvalidCredentials, got %v", err)
+	}
+}
+
+func TestLoginWithPassword_MissingIdentityProvider(t *testing.T) {
+	svc := New(Deps{})
+	_, err := svc.LoginWithPassword(context.Background(), LoginWithPasswordParams{
+		Email:    "ok@example.com",
+		Password: "right-password1",
+	})
+	if !errors.Is(err, ErrIdentityProviderNotConfigured) {
+		t.Fatalf("expected ErrIdentityProviderNotConfigured, got %v", err)
 	}
 }
 
@@ -255,6 +507,37 @@ func TestResolveTenantContext_ByAccountID(t *testing.T) {
 		t.Fatal(err)
 	}
 	if tc.TenantID != tid.String() || tc.NetworkID != nid.String() || tc.AccountID != accID {
+		t.Fatalf("unexpected context: %+v", tc)
+	}
+}
+
+func TestResolveTenantContext_ByAccountIDWithoutNetwork(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	accID := uuid.New().String()
+	tid := uuid.New()
+
+	ma := mocks.NewMockAccountsRepository(ctrl)
+	uid, _ := gocql.ParseUUID(accID)
+	ma.EXPECT().GetByID(gomock.Any(), accID).Return(accountsrepo.AccountRow{ID: uid}, nil)
+
+	mt := mocks.NewMockTenantsRepository(ctrl)
+	aid, _ := gocql.ParseUUID(accID)
+	mt.EXPECT().ListByAccount(gomock.Any(), accID, 1, 0).Return([]tenantsrepo.TenantRow{{
+		ID:        gocql.UUID(tid),
+		AccountID: aid,
+		Slug:      "t1",
+		Status:    "active",
+	}}, nil)
+
+	mn := mocks.NewMockNetworksRepository(ctrl)
+	mn.EXPECT().ListByTenant(gomock.Any(), tid.String()).Return(nil, nil)
+
+	svc := New(Deps{Accounts: ma, Tenants: mt, Networks: mn})
+	tc, err := svc.ResolveTenantContext(context.Background(), ResolveTenantParams{AccountID: accID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tc.TenantID != tid.String() || tc.AccountID != accID || tc.NetworkID != "" || tc.Status != "active" {
 		t.Fatalf("unexpected context: %+v", tc)
 	}
 }

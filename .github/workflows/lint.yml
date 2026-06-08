@@ -1,0 +1,83 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  GO_VERSION: "1.26.x"
+
+jobs:
+  codegen-check:
+    name: Codegen drift check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            **/go.sum
+      - name: Install generators
+        run: |
+          go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
+          go install go.uber.org/mock/mockgen@v0.6.0
+      - name: Regenerate
+        run: |
+          set -euo pipefail
+          for module in services/cf-accounts services/cf-provisioner services/cf-router libs/openbao; do
+            echo "Generating ${module}..."
+            (cd "${module}" && go generate ./...)
+          done
+      - name: Check for drift
+        run: |
+          git diff --exit-code
+          echo "Generated files are up to date"
+
+  lint:
+    name: Lint (${{ matrix.module }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        module:
+          - services/cf-router
+          - services/cf-accounts
+          - services/cf-provisioner
+          - libs/cloudforge-core
+          - libs/scylladb
+          - libs/openbao
+          - libs/clients/cf-accounts
+          - libs/clients/cf-provisioner
+          - libs/clients/cf-router
+          - tools/cf-cli
+          - tools/migrations
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: |
+            **/go.sum
+      - name: Detect Go packages
+        id: packages
+        working-directory: ${{ matrix.module }}
+        run: |
+          packages="$(go list ./... 2>/dev/null)"
+          if [ -z "${packages}" ]; then
+            echo "has_packages=false" >> "${GITHUB_OUTPUT}"
+            echo "No Go packages in ${{ matrix.module }}; skipping lint"
+          else
+            echo "has_packages=true" >> "${GITHUB_OUTPUT}"
+          fi
+      - name: go vet
+        if: steps.packages.outputs.has_packages == 'true'
+        run: go vet ./...
+        working-directory: ${{ matrix.module }}
+      - uses: golangci/golangci-lint-action@v8
+        if: steps.packages.outputs.has_packages == 'true'
+        with:
+          working-directory: ${{ matrix.module }}
+          version: v2.12.2

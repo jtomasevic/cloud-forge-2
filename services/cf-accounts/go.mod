@@ -8,7 +8,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core v0.0.0-00010101000000-000000000000
 	github.com/jtomasevic/cloud-forge-2/libs/scylladb v0.0.0-00010101000000-000000000000
-	github.com/oapi-codegen/runtime v1.3.1
+	github.com/oapi-codegen/runtime v1.4.0
 	go.uber.org/mock v0.6.0
 	golang.org/x/crypto v0.48.0
 )

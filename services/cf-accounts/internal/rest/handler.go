@@ -69,11 +69,11 @@ func (h *Handler) LoginWithPassword(ctx context.Context, request generated.Login
 	if err != nil {
 		return generated.LoginWithPassword400JSONResponse{BadRequestJSONResponse: badRequest(ctx, err.Error())}, nil
 	}
-	acc, err := h.svc.LoginWithPassword(ctx, params)
+	out, err := h.svc.LoginWithPassword(ctx, params)
 	if err != nil {
 		return mapLoginError(ctx, err), nil
 	}
-	return generated.LoginWithPassword200JSONResponse(ToAccountFromService(acc)), nil
+	return generated.LoginWithPassword200JSONResponse(ToLoginResponseFromService(out)), nil
 }
 
 func mapLoginError(ctx context.Context, err error) generated.LoginWithPasswordResponseObject {

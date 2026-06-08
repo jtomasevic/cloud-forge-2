@@ -6,7 +6,7 @@ COPY libs/ libs/
 COPY services/cf-provisioner/ services/cf-provisioner/
 
 WORKDIR /build/services/cf-provisioner
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /cf-provisioner .
+RUN GOWORK=off CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /cf-provisioner .
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=builder /cf-provisioner /cf-provisioner

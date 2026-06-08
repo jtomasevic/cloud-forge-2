@@ -30,14 +30,18 @@ MODULES := \
 	libs/openbao \
 	libs/clients/cf-accounts \
 	libs/clients/cf-provisioner \
+	libs/clients/cf-router \
 	tools/cf-cli \
 	tools/migrations
+
+TILT_PORT ?= 10350
 
 .PHONY: all help build test lint fmt verify codegen tidy work-sync migrate \
 	integration integration-scylladb integration-openbao clean \
 	dev-up dev-down dev-init dev-reset dev-kill \
 	k3d-up k3d-down k3d-install-deps k3d-kubeconfig \
-	dev dev-setup tilt-up tilt-down dev-tools require-tilt
+	dev dev-start dev-local dev-setup tilt-up tilt-down dev-tools gateway-apply \
+	require-dev-tools require-local-dev-tools require-tilt check-dev-hosts stop-tilt free-tilt-port
 
 # -----------------------------------------------------------------------------
 # all — Default target: compile every workspace module.
@@ -59,6 +63,8 @@ help:
 build:
 	@for m in $(MODULES); do \
 		echo "Building $$m..."; \
+		pkgs=$$(cd $$m && go list ./... 2>/dev/null) || exit 1; \
+		if [ -z "$$pkgs" ]; then echo "Skipping $$m (no packages)"; continue; fi; \
 		(cd $$m && go build ./...) || exit 1; \
 	done
 
@@ -69,6 +75,8 @@ build:
 test:
 	@for m in $(MODULES); do \
 		echo "Testing $$m..."; \
+		pkgs=$$(cd $$m && go list ./... 2>/dev/null) || exit 1; \
+		if [ -z "$$pkgs" ]; then echo "Skipping $$m (no packages)"; continue; fi; \
 		(cd $$m && go test -race -count=1 ./...) || exit 1; \
 	done
 
@@ -79,6 +87,8 @@ test:
 lint:
 	@for m in $(MODULES); do \
 		echo "Vetting $$m..."; \
+		pkgs=$$(cd $$m && go list ./... 2>/dev/null) || exit 1; \
+		if [ -z "$$pkgs" ]; then echo "Skipping $$m (no packages)"; continue; fi; \
 		(cd $$m && go vet ./...) || exit 1; \
 	done
 
@@ -89,6 +99,8 @@ lint:
 fmt:
 	@for m in $(MODULES); do \
 		echo "Formatting $$m..."; \
+		pkgs=$$(cd $$m && go list ./... 2>/dev/null) || exit 1; \
+		if [ -z "$$pkgs" ]; then echo "Skipping $$m (no packages)"; continue; fi; \
 		(cd $$m && go fmt ./...) || exit 1; \
 	done
 
@@ -141,28 +153,33 @@ dev-up:
 	docker compose -f dev/docker-compose.yml up -d
 	@echo "Backing services started. Run 'make dev-init' to seed data."
 
-## dev-down: stop local backing services without deleting persisted data
+## dev-down: stop Tilt resources and local backing services without deleting persisted data or the k3d cluster
 dev-down:
+	$(MAKE) stop-tilt
+	$(MAKE) free-tilt-port
 	docker compose -f dev/docker-compose.yml down
 
 ## dev-kill: stop local backing services without deleting persisted data and delete k3d cluster cloudforge-dev
 dev-kill: dev-down k3d-down
 
-## dev-init: start backing services, initialize OpenBao, and apply ScyllaDB migrations
+## dev-init: start backing services, initialize Keycloak/OpenBao, and apply ScyllaDB migrations
 dev-init: dev-up
 	@echo "Waiting for services to be ready..."
 	@sleep 5
+	dev/scripts/init-keycloak.sh
 	dev/scripts/init-openbao.sh
 	dev/scripts/init-scylladb.sh
 	@echo "Dev environment initialized"
 
 ## dev-reset: stop backing services and delete all Docker Compose volumes
-dev-reset: dev-down
+dev-reset:
+	$(MAKE) stop-tilt
+	$(MAKE) free-tilt-port
 	docker compose -f dev/docker-compose.yml down -v
 	@echo "Dev environment reset (all data deleted)"
 
-## dev: initialize the full local dev environment (backing services plus k3d dependencies)
-dev: dev-setup
+## dev: start the full k3d + Envoy Gateway dev loop (same as dev-start)
+dev: dev-start
 
 # -----------------------------------------------------------------------------
 # integration — Delegates to library Makefiles that start real dependencies.
@@ -189,7 +206,7 @@ clean:
 # -----------------------------------------------------------------------------
 # k3d — Local Kubernetes host cluster (Task 19; requires k3d, kubectl, helm).
 # -----------------------------------------------------------------------------
-## k3d-up: create k3d cluster cloudforge-dev (idempotent; LB HTTP/HTTPS default 18080/18443; override CF_K3D_LB_HTTP_PORT / CF_K3D_LB_HTTPS_PORT)
+## k3d-up: create k3d cluster cloudforge-dev with local image registry (idempotent; LB HTTP/HTTPS default 18080/18443)
 k3d-up:
 	bash dev/k8s/cluster-up.sh
 
@@ -211,19 +228,149 @@ k3d-kubeconfig:
 	k3d kubeconfig merge cloudforge-dev --kubeconfig-merge-default
 	@echo "Merged cloudforge-dev kubeconfig into default"
 
-## dev-setup: initialize backing services and install the local k3d dependencies
+## gateway-apply: apply Envoy Gateway routes for local CloudForge API/docs hosts
+gateway-apply:
+	bash -c 'source dev/k8s/use-k3d-kubeconfig.sh; kubectl apply -f dev/k8s/gateway/'
+	@echo "Envoy Gateway resources applied"
+
+## dev-setup: initialize backing services, install local k3d dependencies, and apply gateway routes
 dev-setup:
 	$(MAKE) dev-init
 	$(MAKE) k3d-install-deps
-	@echo "Dev environment ready. Run 'make tilt-up' to start services."
+	$(MAKE) gateway-apply
+	@echo "Dev environment ready."
+
+## dev-start: prepare the full k3d + Envoy Gateway stack and start Tilt in k8s mode
+dev-start: require-dev-tools check-dev-hosts
+	$(MAKE) stop-tilt
+	$(MAKE) free-tilt-port
+	$(MAKE) dev-setup
+	bash -c 'source dev/k8s/use-k3d-kubeconfig.sh; CF_DEV_MODE=k8s TILT_PORT=$(TILT_PORT) tilt up'
+
+## dev-local: initialize backing services and start Tilt with local Go services
+dev-local: require-local-dev-tools
+	$(MAKE) stop-tilt
+	$(MAKE) free-tilt-port
+	$(MAKE) dev-init
+	CF_DEV_MODE=local TILT_PORT=$(TILT_PORT) tilt up
 
 ## tilt-up: start the Tilt local development loop
 tilt-up: require-tilt
-	tilt up
+	$(MAKE) stop-tilt
+	$(MAKE) free-tilt-port
+	@if [ "$${CF_DEV_MODE:-local}" = "k8s" ]; then \
+		bash -c 'source dev/k8s/use-k3d-kubeconfig.sh; CF_DEV_MODE=k8s TILT_PORT=$(TILT_PORT) tilt up'; \
+	else \
+		TILT_PORT=$(TILT_PORT) tilt up; \
+	fi
 
 ## tilt-down: stop Tilt-managed resources
-tilt-down: require-tilt
-	tilt down
+tilt-down:
+	$(MAKE) stop-tilt
+	$(MAKE) free-tilt-port
+
+stop-tilt:
+	@if command -v tilt >/dev/null 2>&1; then \
+		echo "Stopping Tilt-managed resources..."; \
+		bash -c 'source dev/k8s/use-k3d-kubeconfig.sh; CF_DEV_MODE=k8s TILT_PORT=$(TILT_PORT) tilt down' || true; \
+		CF_DEV_MODE=local TILT_PORT=$(TILT_PORT) tilt down || true; \
+	else \
+		echo "Tilt is not installed; skipping Tilt shutdown."; \
+	fi
+
+free-tilt-port:
+	@port="$(TILT_PORT)"; \
+	if ! command -v lsof >/dev/null 2>&1; then \
+		echo "lsof is not available; cannot pre-check Tilt port $$port."; \
+		exit 0; \
+	fi; \
+	pids="$$(lsof -nP -tiTCP:$$port -sTCP:LISTEN 2>/dev/null || true)"; \
+	if [ -z "$$pids" ]; then \
+		exit 0; \
+	fi; \
+	for pid in $$pids; do \
+		name="$$(ps -p $$pid -o comm= 2>/dev/null || true)"; \
+		args="$$(ps -p $$pid -o args= 2>/dev/null || true)"; \
+		case "$$name $$args" in \
+			*[Tt]ilt*) ;; \
+			*) \
+				echo "ERROR: port $$port is used by non-Tilt process $$pid: $$args"; \
+				echo "Stop it manually or run with another port, e.g. TILT_PORT=10351 make dev."; \
+				exit 1; \
+				;; \
+		esac; \
+	done; \
+	echo "Stopping existing Tilt process(es) on port $$port: $$pids"; \
+	kill $$pids 2>/dev/null || true; \
+	for _ in 1 2 3 4 5; do \
+		sleep 1; \
+		remaining="$$(lsof -nP -tiTCP:$$port -sTCP:LISTEN 2>/dev/null || true)"; \
+		if [ -z "$$remaining" ]; then \
+			exit 0; \
+		fi; \
+	done; \
+	remaining="$$(lsof -nP -tiTCP:$$port -sTCP:LISTEN 2>/dev/null || true)"; \
+	for pid in $$remaining; do \
+		name="$$(ps -p $$pid -o comm= 2>/dev/null || true)"; \
+		args="$$(ps -p $$pid -o args= 2>/dev/null || true)"; \
+		case "$$name $$args" in \
+			*[Tt]ilt*) ;; \
+			*) \
+				echo "ERROR: port $$port is still used by non-Tilt process $$pid: $$args"; \
+				exit 1; \
+				;; \
+		esac; \
+	done; \
+	echo "Force-stopping Tilt process(es) on port $$port: $$remaining"; \
+	kill -9 $$remaining 2>/dev/null || true
+
+require-dev-tools:
+	@missing=0; \
+	for tool in docker k3d kubectl helm tilt; do \
+		if ! command -v $$tool >/dev/null 2>&1; then \
+			echo "ERROR: $$tool is not installed or is not on PATH."; \
+			missing=1; \
+		fi; \
+	done; \
+	if [ $$missing -ne 0 ]; then \
+		echo "Install missing tools, then rerun 'make dev'."; \
+		exit 127; \
+	fi
+	@docker info >/dev/null 2>&1 || { \
+		echo "ERROR: Docker daemon is not reachable. Start Docker, then rerun 'make dev'."; \
+		exit 1; \
+	}
+
+require-local-dev-tools:
+	@missing=0; \
+	for tool in docker tilt; do \
+		if ! command -v $$tool >/dev/null 2>&1; then \
+			echo "ERROR: $$tool is not installed or is not on PATH."; \
+			missing=1; \
+		fi; \
+	done; \
+	if [ $$missing -ne 0 ]; then \
+		echo "Install missing tools, then rerun 'make dev-local'."; \
+		exit 127; \
+	fi
+	@docker info >/dev/null 2>&1 || { \
+		echo "ERROR: Docker daemon is not reachable. Start Docker, then rerun 'make dev-local'."; \
+		exit 1; \
+	}
+
+check-dev-hosts:
+	@missing=0; \
+	for host in api.cloudforge.local auth.cloudforge.local; do \
+		if ! grep -Eq "(^|[[:space:]])$${host}([[:space:]]|$$)" /etc/hosts; then \
+			missing=1; \
+		fi; \
+	done; \
+	if [ $$missing -ne 0 ]; then \
+		echo "WARNING: add these entries to /etc/hosts for Envoy Gateway hostnames:"; \
+		echo "  127.0.0.1  api.cloudforge.local"; \
+		echo "  127.0.0.1  auth.cloudforge.local"; \
+		echo "  127.0.0.1  gateway.cloudforge.local"; \
+	fi
 
 require-tilt:
 	@command -v tilt >/dev/null 2>&1 || { \

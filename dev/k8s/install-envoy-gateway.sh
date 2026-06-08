@@ -5,14 +5,11 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=use-k3d-kubeconfig.sh
 source "${SCRIPT_DIR}/use-k3d-kubeconfig.sh"
 
-ENVOY_GW_VERSION="1.0.2"
+ENVOY_GW_VERSION="v1.0.2"
 
 echo "Installing Envoy Gateway ${ENVOY_GW_VERSION}"
 
-helm repo add envoy-gateway https://charts.envoyproxy.io --force-update
-helm repo update
-
-helm upgrade --install envoy-gateway envoy-gateway/gateway-helm \
+helm upgrade --install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
 	--version "${ENVOY_GW_VERSION}" \
 	--namespace envoy-gateway-system \
 	--create-namespace \

@@ -1,0 +1,25 @@
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+    - typecheck
+    - gofmt
+    - goimports
+    - misspell
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/jtomasevic/cloud-forge-2
+
+issues:
+  exclude-rules:
+    - path: generated/
+      linters: [errcheck, unused]
+    - path: client\.gen\.go
+      linters: [errcheck, unused]
+    - path: _mock\.go
+      linters: [errcheck, unused]

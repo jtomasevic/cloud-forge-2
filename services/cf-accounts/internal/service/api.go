@@ -8,6 +8,7 @@ import (
 
 	accountsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/accounts"
 	credentialsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/credentials"
+	identityrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/identity"
 	networksrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/networks"
 	tenantsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/tenants"
 )
@@ -17,18 +18,19 @@ import (
 // operation once the REST layer is wired.
 type AccountsService interface {
 	// CreateAccount registers a new customer: validates email and password, ensures
-	// the email is unused, stores a bcrypt password hash, inserts the account row,
-	// then creates a default tenant in "provisioning" with a URL-safe slug derived
-	// from the email local-part (with collision handling). Returns both the account
-	// and that default tenant so clients need not list tenants immediately.
+	// the email is unused, creates a matching identity user, stores a bcrypt password
+	// hash, inserts the account row, then creates an active default tenant with a
+	// URL-safe slug derived from the email local-part (with collision handling).
+	// Returns both the account and that default tenant so clients need not list
+	// tenants immediately.
 	CreateAccount(ctx context.Context, params CreateAccountParams) (CreateAccountResult, error)
 
-	// LoginWithPassword loads the account by email and verifies the password against
-	// the stored bcrypt hash. Malformed passwords (e.g. shorter than signup minimum)
-	// return the same validation errors as [CreateAccount]. Wrong password, unknown
-	// email, empty hash, or non-active account returns [ErrInvalidCredentials] so callers
-	// cannot infer whether the email was unknown or the password was wrong. On success returns [Account] without password material.
-	LoginWithPassword(ctx context.Context, params LoginWithPasswordParams) (Account, error)
+	// LoginWithPassword authenticates through the identity provider, loads the active
+	// CloudForge account from the returned cf_account_id token claim, and returns token
+	// material plus account details. Wrong password, unknown email, missing account
+	// claim, inactive account, or mismatched identity data returns [ErrInvalidCredentials]
+	// so callers cannot infer which part failed.
+	LoginWithPassword(ctx context.Context, params LoginWithPasswordParams) (LoginResult, error)
 
 	// GetAccount returns an account by primary key UUID string.
 	GetAccount(ctx context.Context, id string) (Account, error)
@@ -90,6 +92,7 @@ type Deps struct {
 	Tenants     tenantsrepo.TenantsRepository
 	Networks    networksrepo.NetworksRepository
 	Credentials credentialsrepo.CredentialsRepository
+	Identity    identityrepo.Provider
 }
 
 // New constructs an AccountsService backed by the given repositories.

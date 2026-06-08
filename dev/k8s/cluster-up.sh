@@ -7,6 +7,9 @@ CLUSTER_API_PORT=6550
 # which often collide with Keycloak, other local stacks, or a second k3d cluster.
 : "${CF_K3D_LB_HTTP_PORT:=18080}"
 : "${CF_K3D_LB_HTTPS_PORT:=18443}"
+: "${CF_K3D_REGISTRY_NAME:=cloudforge-dev-registry.localhost}"
+: "${CF_K3D_REGISTRY_HOST:=127.0.0.1}"
+: "${CF_K3D_REGISTRY_PORT:=5001}"
 
 if k3d cluster list 2>/dev/null | grep -q "${CLUSTER_NAME}"; then
 	echo "Cluster ${CLUSTER_NAME} already exists — skipping creation"
@@ -22,6 +25,12 @@ if k3d cluster list 2>/dev/null | grep -q "${CLUSTER_NAME}"; then
 		echo "       Common fix after Docker restarts or port drift: make k3d-down && make k3d-up" >&2
 		exit 1
 	fi
+	if ! k3d registry list 2>/dev/null | grep -q "k3d-${CF_K3D_REGISTRY_NAME}"; then
+		echo "ERROR: ${CLUSTER_NAME} exists without the required k3d local registry." >&2
+		echo "       Tilt needs this registry to load local dev images without pushing to ghcr.io." >&2
+		echo "       Recreate the disposable dev cluster once: make k3d-down && make dev" >&2
+		exit 1
+	fi
 	echo "Tip: optional — merge kubeconfig for your shell's kubectl: make k3d-kubeconfig"
 	exit 0
 fi
@@ -29,6 +38,7 @@ fi
 echo "Creating k3d cluster: ${CLUSTER_NAME}"
 k3d cluster create "${CLUSTER_NAME}" \
 	--api-port "${CLUSTER_API_PORT}" \
+	--registry-create "${CF_K3D_REGISTRY_NAME}:${CF_K3D_REGISTRY_HOST}:${CF_K3D_REGISTRY_PORT}" \
 	--port "${CF_K3D_LB_HTTP_PORT}:80@loadbalancer" \
 	--port "${CF_K3D_LB_HTTPS_PORT}:443@loadbalancer" \
 	--k3s-arg "--disable=traefik@server:0" \
@@ -38,5 +48,6 @@ k3d cluster create "${CLUSTER_NAME}" \
 
 echo "Cluster ${CLUSTER_NAME} created successfully"
 echo "Edge (Envoy Gateway once installed): http://127.0.0.1:${CF_K3D_LB_HTTP_PORT}  https://127.0.0.1:${CF_K3D_LB_HTTPS_PORT}"
+echo "Local image registry: ${CF_K3D_REGISTRY_NAME}:${CF_K3D_REGISTRY_PORT}"
 echo "Override host ports next time: CF_K3D_LB_HTTP_PORT CF_K3D_LB_HTTPS_PORT"
 echo "KUBECONFIG: $(k3d kubeconfig get "${CLUSTER_NAME}")"

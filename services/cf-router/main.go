@@ -24,6 +24,7 @@ func main() {
 
 	httpAddr := envOr("HTTP_ADDR", ":8083")
 	swaggerAddr := envOr("SWAGGER_ADDR", ":8090")
+	swaggerAPIServerURL := envOr("SWAGGER_API_BASE_URL", "http://localhost:8083")
 	scyllaHosts := envOr("SCYLLADB_HOSTS", "localhost:9042")
 	keyspace := envOr("SCYLLADB_KEYSPACE", "cloudforge")
 	cfAccountsURL := strings.TrimRight(envOr("CF_ACCOUNTS_URL", "http://localhost:8081"), "/")
@@ -81,7 +82,7 @@ func main() {
 	if !swaggerServerDisabled(swaggerAddr) {
 		swaggerSrv := &http.Server{
 			Addr:         swaggerAddr,
-			Handler:      rest.NewSwaggerRouter(),
+			Handler:      rest.NewSwaggerRouter(rest.SwaggerConfig{APIServerURL: swaggerAPIServerURL}),
 			ReadTimeout:  10 * time.Second,
 			WriteTimeout: 10 * time.Second,
 			IdleTimeout:  60 * time.Second,
@@ -98,7 +99,7 @@ func main() {
 
 	slog.Info("cf-router listening", "addr", httpAddr, "keyspace", keyspace)
 	if !swaggerServerDisabled(swaggerAddr) {
-		slog.Info("cf-router swagger listening", "addr", swaggerAddr)
+		slog.Info("cf-router swagger listening", "addr", swaggerAddr, "apiServerURL", swaggerAPIServerURL)
 	}
 	if err := <-errCh; err != nil {
 		slog.Error("server error", "error", err)
