@@ -1,0 +1,33 @@
+version: "2"
+
+linters:
+  enable:
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - ineffassign
+    - misspell
+  exclusions:
+    rules:
+      - path: generated/
+        linters:
+          - errcheck
+          - unused
+      - path: client\.gen\.go
+        linters:
+          - errcheck
+          - unused
+      - path: _mock\.go
+        linters:
+          - errcheck
+          - unused
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/jtomasevic/cloud-forge-2

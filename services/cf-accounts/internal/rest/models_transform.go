@@ -50,6 +50,30 @@ func ToCreateAccountResultFromService(r service.CreateAccountResult) generated.C
 	}
 }
 
+// ToLoginResponseFromService maps a service login result to the OpenAPI token response.
+func ToLoginResponseFromService(r service.LoginResult) generated.LoginResponse {
+	out := generated.LoginResponse{
+		AccessToken: r.AccessToken,
+		Account:     ToAccountFromService(r.Account),
+		ExpiresIn:   int32(r.ExpiresIn),
+		TokenType:   r.TokenType,
+	}
+	if r.RefreshToken != "" {
+		out.RefreshToken = &r.RefreshToken
+	}
+	if r.RefreshExpiresIn > 0 {
+		v := int32(r.RefreshExpiresIn)
+		out.RefreshExpiresIn = &v
+	}
+	if r.IDToken != "" {
+		out.IdToken = &r.IDToken
+	}
+	if r.Scope != "" {
+		out.Scope = &r.Scope
+	}
+	return out
+}
+
 // ToAccountFromService maps a service account to the OpenAPI Account model.
 func ToAccountFromService(a service.Account) generated.Account {
 	uid := uuid.MustParse(a.ID)

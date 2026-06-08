@@ -3,7 +3,7 @@ set -euo pipefail
 
 BASE_URL="${CF_ROUTER_URL:-http://localhost:8083}"
 CF_ACCOUNTS_URL="${CF_ACCOUNTS_URL:-http://localhost:8081}"
-KEYCLOAK_TOKEN_URL="${KEYCLOAK_TOKEN_URL:-http://localhost:8084/auth/realms/cloudforge/protocol/openid-connect/token}"
+CF_LOGIN_URL="${CF_LOGIN_URL:-${BASE_URL}/v1/auth/login}"
 
 DEV_ACCOUNT_ID="11111111-1111-4111-8111-111111111111"
 DEV_TENANT_ID="33333333-3333-4333-8333-333333333333"
@@ -45,27 +45,34 @@ run_cql "INSERT INTO cloudforge.networks (id, tenant_id, region, pod_cidr, svc_c
 run_cql "INSERT INTO cloudforge.networks_by_tenant (tenant_id, network_id, region, status, created_at) VALUES (${DEV_TENANT_ID}, ${DEV_NETWORK_ID}, 'local', 'active', '${SEED_TIME}');"
 echo "   PASS"
 
-echo "3. Get dev JWT..."
-TOKEN="$(curl -sf -X POST "${KEYCLOAK_TOKEN_URL}" \
-	-d "grant_type=password&client_id=cf-console&username=dev-user@cloudforge.io&password=devpassword" \
-	| json_value "data['access_token']")"
+echo "3. Log in dev user through CloudForge API..."
+TOKEN="$(curl -sf -X POST "${CF_LOGIN_URL}" \
+	-H "Content-Type: application/json" \
+	-d '{"email":"dev-user@cloudforge.io","password":"devpassword"}' \
+	| json_value "data['accessToken']")"
 echo "   PASS"
 
-echo "4. Create account via CF-Router..."
+echo "4. Create account via CF-Router public signup..."
 SMOKE_EMAIL="smoke-test-$(date +%s)@example.com"
 ACCOUNT="$(curl -sf -X POST "${BASE_URL}/v1/accounts" \
-	-H "Authorization: Bearer ${TOKEN}" \
 	-H "Content-Type: application/json" \
 	-d "{\"email\":\"${SMOKE_EMAIL}\",\"password\":\"smokepassword1\"}")"
 ACCOUNT_ID="$(echo "${ACCOUNT}" | json_value "data['account']['id']")"
 echo "   PASS (account ID: ${ACCOUNT_ID})"
 
-echo "5. Get account via CF-Router..."
-curl -sf "${BASE_URL}/v1/accounts/${ACCOUNT_ID}" \
-	-H "Authorization: Bearer ${TOKEN}" | grep '"status":"active"' >/dev/null
+echo "5. Log in new account through CloudForge API..."
+SMOKE_TOKEN="$(curl -sf -X POST "${CF_LOGIN_URL}" \
+	-H "Content-Type: application/json" \
+	-d "{\"email\":\"${SMOKE_EMAIL}\",\"password\":\"smokepassword1\"}" \
+	| json_value "data['accessToken']")"
 echo "   PASS"
 
-echo "6. CF-Accounts direct readiness..."
+echo "6. Get new account tenants via CF-Router..."
+curl -sf "${BASE_URL}/v1/accounts/${ACCOUNT_ID}/tenants" \
+	-H "Authorization: Bearer ${SMOKE_TOKEN}" | grep '"status":"active"' >/dev/null
+echo "   PASS"
+
+echo "7. CF-Accounts direct readiness..."
 curl -sf "${CF_ACCOUNTS_URL}/v1/accounts?limit=1" >/dev/null
 echo "   PASS"
 

@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"errors"
+	"log/slog"
 	"strings"
 	"time"
 	"unicode"
@@ -17,6 +18,7 @@ import (
 	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 	accountsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/accounts"
 	credentialsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/credentials"
+	identityrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/identity"
 	networksrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/networks"
 	tenantsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/tenants"
 )
@@ -27,9 +29,8 @@ type CFAccountsService struct {
 }
 
 // CreateAccount implements the signup flow described on [AccountsService.CreateAccount].
-// Order matters: email uniqueness is checked before inserts; tenant insert runs only
-// after a successful account insert (no automatic rollback—partial failure leaves
-// orphan rows for a follow-up repair job if ever needed in production).
+// Order matters: email uniqueness is checked before writes; identity creation happens before
+// database inserts so a user cannot log in to an account that failed to persist.
 func (s *CFAccountsService) CreateAccount(ctx context.Context, params CreateAccountParams) (CreateAccountResult, error) {
 	email := strings.TrimSpace(params.Email)
 	if email == "" {
@@ -60,13 +61,6 @@ func (s *CFAccountsService) CreateAccount(ctx context.Context, params CreateAcco
 	if err != nil {
 		return CreateAccountResult{}, cferrors.Wrap(cferrors.CodeInternal, "invalid generated account id", err)
 	}
-	if err := s.deps.Accounts.Insert(ctx, accRow); err != nil {
-		return CreateAccountResult{}, err
-	}
-
-	tenantUUID := uuid.New()
-	tenantID := gocql.UUID(tenantUUID)
-	accountGocql := gocql.UUID(accountUUID)
 
 	baseSlug := emailLocalPartToSlug(email)
 	slug, err := s.pickUniqueTenantSlug(ctx, baseSlug)
@@ -74,9 +68,33 @@ func (s *CFAccountsService) CreateAccount(ctx context.Context, params CreateAcco
 		return CreateAccountResult{}, err
 	}
 
-	tenantRow := ToRepositoryInsertTenantRow(accountGocql, tenantID, slug, "", "provisioning", now)
+	tenantUUID := uuid.New()
+	tenantID := gocql.UUID(tenantUUID)
+	accountGocql := gocql.UUID(accountUUID)
+	tenantRow := ToRepositoryInsertTenantRow(accountGocql, tenantID, slug, "", "active", now)
+
+	identityID := ""
+	if s.deps.Identity != nil {
+		identityUser, err := s.deps.Identity.CreateUser(ctx, identityrepo.CreateUserParams{
+			ID:        accountID,
+			AccountID: accountID,
+			Email:     email,
+			Password:  params.Password,
+		})
+		if err != nil {
+			if errors.Is(err, identityrepo.ErrUserExists) {
+				return CreateAccountResult{}, ErrAccountEmailTaken
+			}
+			return CreateAccountResult{}, err
+		}
+		identityID = identityUser.ID
+	}
+
+	if err := s.deps.Accounts.Insert(ctx, accRow); err != nil {
+		return CreateAccountResult{}, s.rollbackIdentityUser(ctx, identityID, err)
+	}
 	if err := s.deps.Tenants.Insert(ctx, tenantRow); err != nil {
-		return CreateAccountResult{}, err
+		return CreateAccountResult{}, s.rollbackIdentityUser(ctx, identityID, err)
 	}
 
 	return CreateAccountResult{
@@ -85,32 +103,75 @@ func (s *CFAccountsService) CreateAccount(ctx context.Context, params CreateAcco
 	}, nil
 }
 
+func (s *CFAccountsService) rollbackIdentityUser(ctx context.Context, identityID string, cause error) error {
+	if strings.TrimSpace(identityID) == "" || s.deps.Identity == nil {
+		return cause
+	}
+	if err := s.deps.Identity.DeleteUser(context.WithoutCancel(ctx), identityID); err != nil {
+		slog.WarnContext(ctx, "failed to roll back identity user after signup failure", "identity_id", identityID, "error", err)
+	}
+	return cause
+}
+
 // LoginWithPassword implements [AccountsService.LoginWithPassword].
-func (s *CFAccountsService) LoginWithPassword(ctx context.Context, params LoginWithPasswordParams) (Account, error) {
+func (s *CFAccountsService) LoginWithPassword(ctx context.Context, params LoginWithPasswordParams) (LoginResult, error) {
 	email := strings.TrimSpace(params.Email)
 	if email == "" {
-		return Account{}, ErrInvalidCredentials
+		return LoginResult{}, ErrInvalidCredentials
 	}
 	if err := validateNewAccountPassword(params.Password); err != nil {
-		return Account{}, err
+		return LoginResult{}, err
 	}
-	row, err := s.deps.Accounts.GetByEmail(ctx, email)
+	if s.deps.Identity == nil {
+		return LoginResult{}, ErrIdentityProviderNotConfigured
+	}
+	token, err := s.deps.Identity.AuthenticatePassword(ctx, identityrepo.AuthenticatePasswordParams{
+		Email:    email,
+		Password: params.Password,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, identityrepo.ErrAuthenticationFailed):
+			return LoginResult{}, ErrInvalidCredentials
+		case errors.Is(err, identityrepo.ErrClientConfig):
+			return LoginResult{}, cferrors.Wrap(cferrors.CodeInternal, "identity provider login configuration failed", err)
+		case errors.Is(err, identityrepo.ErrIdentityService):
+			return LoginResult{}, cferrors.Wrap(cferrors.CodeUnavailable, "identity provider login failed", err)
+		default:
+			return LoginResult{}, cferrors.Wrap(cferrors.CodeUnavailable, "identity provider login failed", err)
+		}
+	}
+	if strings.TrimSpace(token.AccountID) == "" {
+		return LoginResult{}, ErrInvalidCredentials
+	}
+
+	row, err := s.deps.Accounts.GetByID(ctx, token.AccountID)
 	if err != nil {
 		if errors.Is(err, accountsrepo.ErrAccountNotFound) {
-			return Account{}, ErrInvalidCredentials
+			return LoginResult{}, ErrInvalidCredentials
 		}
-		return Account{}, err
+		return LoginResult{}, err
 	}
-	if row.PasswordHash == "" {
-		return Account{}, ErrInvalidCredentials
+	account := ToServiceAccountFromRepository(row)
+	if account.Status != "active" {
+		return LoginResult{}, ErrInvalidCredentials
 	}
-	if row.Status != "active" {
-		return Account{}, ErrInvalidCredentials
+	if account.ID != token.AccountID {
+		return LoginResult{}, ErrInvalidCredentials
 	}
-	if err := comparePasswordBcrypt(row.PasswordHash, params.Password); err != nil {
-		return Account{}, ErrInvalidCredentials
+	if token.Email != "" && !strings.EqualFold(token.Email, account.Email) {
+		return LoginResult{}, ErrInvalidCredentials
 	}
-	return ToServiceAccountFromRepository(row), nil
+	return LoginResult{
+		AccessToken:      token.AccessToken,
+		RefreshToken:     token.RefreshToken,
+		IDToken:          token.IDToken,
+		TokenType:        token.TokenType,
+		Scope:            token.Scope,
+		ExpiresIn:        token.ExpiresIn,
+		RefreshExpiresIn: token.RefreshExpiresIn,
+		Account:          account,
+	}, nil
 }
 
 // pickUniqueTenantSlug returns a slug at most 63 chars based on baseSlug that does
@@ -363,9 +424,11 @@ func (s *CFAccountsService) resolveByAPIKeyHash(ctx context.Context, keyHash str
 
 // resolveByAccountID is the v1 tenant-resolution heuristic for router use: verify the
 // account exists, take the first tenant row from ListByAccount(limit=1), then choose
-// a network via [pickActiveNetwork]. If there is no tenant, no suitable network, or
-// the account is missing, returns [ErrResolutionFailed]. Region on the result is taken
-// from the tenant row as stored (may be empty when networks carry authoritative region).
+// a network via [pickActiveNetwork] when one exists. A signed-up account may have an
+// active tenant before any network is provisioned, so the resolved network is optional.
+// If there is no tenant or the account is missing, returns [ErrResolutionFailed].
+// Region on the result is taken from the tenant row as stored (may be empty when
+// networks carry authoritative region).
 func (s *CFAccountsService) resolveByAccountID(ctx context.Context, accountID string) (TenantContext, error) {
 	if _, err := s.deps.Accounts.GetByID(ctx, accountID); err != nil {
 		if errors.Is(err, accountsrepo.ErrAccountNotFound) {
@@ -382,6 +445,12 @@ func (s *CFAccountsService) resolveByAccountID(ctx context.Context, accountID st
 		return TenantContext{}, ErrResolutionFailed
 	}
 	t := tenants[0]
+	out := TenantContext{
+		TenantID:  t.ID.String(),
+		AccountID: t.AccountID.String(),
+		Region:    t.Region,
+		Status:    t.Status,
+	}
 
 	nets, err := s.deps.Networks.ListByTenant(ctx, t.ID.String())
 	if err != nil {
@@ -389,16 +458,10 @@ func (s *CFAccountsService) resolveByAccountID(ctx context.Context, accountID st
 	}
 	net := pickActiveNetwork(nets)
 	if net.ID == (gocql.UUID{}) {
-		return TenantContext{}, ErrResolutionFailed
+		return out, nil
 	}
-
-	return TenantContext{
-		TenantID:  t.ID.String(),
-		AccountID: t.AccountID.String(),
-		NetworkID: net.ID.String(),
-		Region:    t.Region,
-		Status:    t.Status,
-	}, nil
+	out.NetworkID = net.ID.String()
+	return out, nil
 }
 
 // pickActiveNetwork prefers the first row with status "active", else the first

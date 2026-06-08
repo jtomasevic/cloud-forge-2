@@ -18,6 +18,7 @@ helm upgrade --install cilium cilium/cilium \
 	--set image.pullPolicy=IfNotPresent \
 	--set ipam.mode=kubernetes \
 	--set kubeProxyReplacement=false \
+	--set operator.replicas=1 \
 	--set policyAuditMode=true \
 	--set hubble.enabled=true \
 	--set hubble.relay.enabled=true \

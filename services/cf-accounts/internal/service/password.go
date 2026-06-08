@@ -36,8 +36,3 @@ func hashPasswordBcrypt(password string) (string, error) {
 	}
 	return string(hashed), nil
 }
-
-// comparePasswordBcrypt returns nil if plain matches hashedPassword, otherwise bcrypt's compare error.
-func comparePasswordBcrypt(hashedPassword, plain string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(plain))
-}

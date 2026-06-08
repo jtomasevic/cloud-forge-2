@@ -25,6 +25,20 @@ spec:
               value: "host.k3d.internal:9042"
             - name: SCYLLADB_KEYSPACE
               value: "cloudforge"
+            - name: KEYCLOAK_ADMIN_URL
+              value: "http://host.k3d.internal:8084/auth"
+            - name: KEYCLOAK_REALM
+              value: "cloudforge"
+            - name: KEYCLOAK_ADMIN_REALM
+              value: "master"
+            - name: KEYCLOAK_ADMIN_CLIENT_ID
+              value: "admin-cli"
+            - name: KEYCLOAK_ADMIN_USERNAME
+              value: "admin"
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              value: "admin"
+            - name: KEYCLOAK_LOGIN_CLIENT_ID
+              value: "cf-console"
           readinessProbe:
             httpGet:
               path: /v1/accounts

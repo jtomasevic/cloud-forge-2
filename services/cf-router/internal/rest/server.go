@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	cfmiddleware "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/middleware"
-	strictnethttp "github.com/oapi-codegen/runtime/strictmiddleware/nethttp"
 
 	"github.com/jtomasevic/cloud-forge-2/services/cf-router/internal/rest/generated"
 )
@@ -21,8 +20,8 @@ import (
 //
 // The second parameter is the OpenAPI operationId string; we ignore it because the same middleware
 // applies uniformly.
-func attachHTTPRequestMiddleware(next strictnethttp.StrictHTTPHandlerFunc, _ string) strictnethttp.StrictHTTPHandlerFunc {
-	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+func attachHTTPRequestMiddleware(next generated.StrictHandlerFunc, _ string) generated.StrictHandlerFunc {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
 		return next(WithHTTPRequest(ctx, r), w, r, request)
 	}
 }
@@ -44,7 +43,7 @@ func attachHTTPRequestMiddleware(next strictnethttp.StrictHTTPHandlerFunc, _ str
 //
 // So the mux sees request IDs and panics are recovered at the edge.
 func NewRouter(handler *Handler) http.Handler {
-	strict := generated.NewStrictHandlerWithOptions(handler, []strictnethttp.StrictHTTPMiddlewareFunc{attachHTTPRequestMiddleware}, generated.StrictHTTPServerOptions{
+	strict := generated.NewStrictHandlerWithOptions(handler, []generated.StrictMiddlewareFunc{attachHTTPRequestMiddleware}, generated.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  JSONDecodeError,
 		ResponseErrorHandlerFunc: JSONEncodeError,
 	})

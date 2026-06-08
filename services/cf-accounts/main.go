@@ -11,6 +11,7 @@ import (
 	scylladbclient "github.com/jtomasevic/cloud-forge-2/libs/scylladb/pkg/client"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/accounts"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/credentials"
+	"github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/identity"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/networks"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/repository/tenants"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-accounts/internal/rest"
@@ -24,6 +25,21 @@ func main() {
 	hosts := envOr("SCYLLADB_HOSTS", "localhost:9042")
 	keyspace := envOr("SCYLLADB_KEYSPACE", "cloudforge")
 	addr := envOr("HTTP_ADDR", ":8081")
+	identityProvider, err := identity.NewKeycloakProvider(identity.KeycloakConfig{
+		BaseURL:     envOr("KEYCLOAK_ADMIN_URL", "http://localhost:8084/auth"),
+		Realm:       envOr("KEYCLOAK_REALM", "cloudforge"),
+		AdminRealm:  envOr("KEYCLOAK_ADMIN_REALM", "master"),
+		AdminClient: envOr("KEYCLOAK_ADMIN_CLIENT_ID", "admin-cli"),
+		AdminSecret: os.Getenv("KEYCLOAK_ADMIN_CLIENT_SECRET"),
+		AdminUser:   envOr("KEYCLOAK_ADMIN_USERNAME", "admin"),
+		AdminPass:   envOr("KEYCLOAK_ADMIN_PASSWORD", "admin"),
+		LoginClient: envOr("KEYCLOAK_LOGIN_CLIENT_ID", "cf-console"),
+		LoginSecret: os.Getenv("KEYCLOAK_LOGIN_CLIENT_SECRET"),
+	})
+	if err != nil {
+		slog.Error("failed to initialize identity provider", "error", err)
+		os.Exit(1)
+	}
 
 	session, err := scylladbclient.New(context.Background(), scylladbclient.Config{
 		Hosts:    splitHosts(hosts),
@@ -40,6 +56,7 @@ func main() {
 		Tenants:     tenants.New(session),
 		Networks:    networks.New(session),
 		Credentials: credentials.New(session),
+		Identity:    identityProvider,
 	})
 
 	h := rest.NewHandler(svc)

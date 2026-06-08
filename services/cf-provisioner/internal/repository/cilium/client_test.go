@@ -5,9 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/dynamic/fake"
+
+	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 )
 
 func TestApplyDefaultDenyPolicy_Validation(t *testing.T) {

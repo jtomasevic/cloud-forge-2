@@ -1,0 +1,14 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: cloudforge-dev-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: cloudforge-tls
+  issuerRef:
+    name: cloudforge-selfsigned
+    kind: ClusterIssuer
+  dnsNames:
+    - api.cloudforge.local
+    - auth.cloudforge.local
+    - "*.gateway.cloudforge.local"

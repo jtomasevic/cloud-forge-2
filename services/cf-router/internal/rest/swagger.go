@@ -7,17 +7,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/jtomasevic/cloud-forge-2/services/cf-router/internal/rest/generated"
-	"gopkg.in/yaml.v3"
 )
 
-var (
-	routerSwaggerJSONOnce sync.Once
-	routerSwaggerJSON     []byte
-	routerSwaggerJSONErr  error
-)
+const defaultSwaggerAPIServerURL = "http://localhost:8083"
+
+type SwaggerConfig struct {
+	APIServerURL string
+}
 
 type publicSpecConfig struct {
 	ID              string
@@ -33,7 +33,7 @@ var publicSpecs = map[string]publicSpecConfig{
 	"cf-accounts": {
 		ID:              "cf-accounts",
 		SourcePath:      "api/cf-accounts/v1/openapi.yaml",
-		AllowedPrefixes: []string{"/v1/accounts", "/v1/tenants"},
+		AllowedPrefixes: []string{"/v1/auth", "/v1/accounts", "/v1/tenants"},
 		Proxied:         true,
 	},
 	"cf-provisioner": {
@@ -45,17 +45,33 @@ var publicSpecs = map[string]publicSpecConfig{
 }
 
 // NewSwaggerRouter serves the public, unauthenticated aggregated OpenAPI docs.
-func NewSwaggerRouter() http.Handler {
+func NewSwaggerRouter(configs ...SwaggerConfig) http.Handler {
+	cfg := normalizeSwaggerConfig(configs...)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", redirectToSwagger)
 	mux.HandleFunc("GET /swagger", redirectToSwagger)
 	mux.HandleFunc("GET /swagger/", serveSwaggerPage)
-	mux.HandleFunc("GET /openapi.json", serveRouterSwaggerJSON)
-	mux.HandleFunc("GET /swagger.json", serveRouterSwaggerJSON)
-	mux.HandleFunc("GET /openapi/cf-router.json", serveNamedSwaggerJSON("cf-router"))
-	mux.HandleFunc("GET /openapi/cf-accounts.json", serveNamedSwaggerJSON("cf-accounts"))
-	mux.HandleFunc("GET /openapi/cf-provisioner.json", serveNamedSwaggerJSON("cf-provisioner"))
+	mux.HandleFunc("GET /openapi.json", serveRouterSwaggerJSON(cfg))
+	mux.HandleFunc("GET /swagger.json", serveRouterSwaggerJSON(cfg))
+	mux.HandleFunc("GET /openapi/cf-router.json", serveNamedSwaggerJSON("cf-router", cfg))
+	mux.HandleFunc("GET /openapi/cf-accounts.json", serveNamedSwaggerJSON("cf-accounts", cfg))
+	mux.HandleFunc("GET /openapi/cf-provisioner.json", serveNamedSwaggerJSON("cf-provisioner", cfg))
 	return mux
+}
+
+func normalizeSwaggerConfig(configs ...SwaggerConfig) SwaggerConfig {
+	cfg := SwaggerConfig{APIServerURL: defaultSwaggerAPIServerURL}
+	if len(configs) == 0 {
+		return cfg
+	}
+	apiServerURL := strings.TrimSpace(configs[0].APIServerURL)
+	if apiServerURL != "" {
+		if apiServerURL != "/" {
+			apiServerURL = strings.TrimRight(apiServerURL, "/")
+		}
+		cfg.APIServerURL = apiServerURL
+	}
+	return cfg
 }
 
 func redirectToSwagger(w http.ResponseWriter, r *http.Request) {
@@ -72,18 +88,20 @@ func serveSwaggerPage(w http.ResponseWriter, _ *http.Request) {
 	_, _ = w.Write([]byte(swaggerPageHTML))
 }
 
-func serveRouterSwaggerJSON(w http.ResponseWriter, r *http.Request) {
-	serveSwaggerJSON(w, r, "cf-router")
-}
-
-func serveNamedSwaggerJSON(id string) http.HandlerFunc {
+func serveRouterSwaggerJSON(cfg SwaggerConfig) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		serveSwaggerJSON(w, r, id)
+		serveSwaggerJSON(w, r, "cf-router", cfg)
 	}
 }
 
-func serveSwaggerJSON(w http.ResponseWriter, _ *http.Request, id string) {
-	spec, err := publicSwaggerJSON(id)
+func serveNamedSwaggerJSON(id string, cfg SwaggerConfig) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		serveSwaggerJSON(w, r, id, cfg)
+	}
+}
+
+func serveSwaggerJSON(w http.ResponseWriter, _ *http.Request, id string, swaggerCfg SwaggerConfig) {
+	spec, err := publicSwaggerJSON(id, swaggerCfg)
 	if err != nil {
 		http.Error(w, "failed to load OpenAPI spec: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -93,13 +111,13 @@ func serveSwaggerJSON(w http.ResponseWriter, _ *http.Request, id string) {
 	_, _ = w.Write(spec)
 }
 
-func publicSwaggerJSON(id string) ([]byte, error) {
+func publicSwaggerJSON(id string, swaggerCfg SwaggerConfig) ([]byte, error) {
 	cfg, ok := publicSpecs[id]
 	if !ok {
 		return nil, fmt.Errorf("unknown public spec %q", id)
 	}
 	if id == "cf-router" {
-		return cfRouterSwaggerJSON()
+		return cfRouterSwaggerJSON(swaggerCfg)
 	}
 
 	data, err := readOpenAPIFile(cfg.SourcePath)
@@ -110,7 +128,7 @@ func publicSwaggerJSON(id string) ([]byte, error) {
 	if err := yaml.Unmarshal(data, &doc); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", cfg.SourcePath, err)
 	}
-	preparePublicSpec(doc, cfg)
+	preparePublicSpec(doc, cfg, swaggerCfg)
 	out, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return nil, fmt.Errorf("marshal %s: %w", cfg.SourcePath, err)
@@ -118,16 +136,25 @@ func publicSwaggerJSON(id string) ([]byte, error) {
 	return out, nil
 }
 
-func cfRouterSwaggerJSON() ([]byte, error) {
-	routerSwaggerJSONOnce.Do(func() {
-		spec, err := generated.GetSwagger()
-		if err != nil {
-			routerSwaggerJSONErr = err
-			return
-		}
-		routerSwaggerJSON, routerSwaggerJSONErr = json.MarshalIndent(spec, "", "  ")
-	})
-	return routerSwaggerJSON, routerSwaggerJSONErr
+func cfRouterSwaggerJSON(swaggerCfg SwaggerConfig) ([]byte, error) {
+	spec, err := generated.GetSpec()
+	if err != nil {
+		return nil, err
+	}
+	data, err := json.Marshal(spec)
+	if err != nil {
+		return nil, fmt.Errorf("marshal cf-router generated spec: %w", err)
+	}
+	var doc map[string]interface{}
+	if err := json.Unmarshal(data, &doc); err != nil {
+		return nil, fmt.Errorf("decode cf-router generated spec: %w", err)
+	}
+	setPublicSpecServer(doc, swaggerCfg)
+	out, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal cf-router public spec: %w", err)
+	}
+	return out, nil
 }
 
 func readOpenAPIFile(relPath string) ([]byte, error) {
@@ -171,17 +198,21 @@ func openAPIPathCandidates(relPath string) []string {
 	return candidates
 }
 
-func preparePublicSpec(doc map[string]interface{}, cfg publicSpecConfig) {
-	doc["servers"] = []map[string]string{
-		{
-			"url":         "http://localhost:8083",
-			"description": "Local development via CF-Router",
-		},
-	}
+func preparePublicSpec(doc map[string]interface{}, cfg publicSpecConfig, swaggerCfg SwaggerConfig) {
+	setPublicSpecServer(doc, swaggerCfg)
 	filterPaths(doc, cfg.AllowedPrefixes)
 	if cfg.Proxied {
 		prepareProxiedSecurity(doc)
-		appendInfoDescription(doc, "\n\nThis public development spec is served through CF-Router. Use `http://localhost:8083` as the API server; CF-Router validates Bearer JWTs or `X-CF-API-Key` and injects internal service headers before proxying.")
+		appendInfoDescription(doc, "\n\nThis public development spec is served through CF-Router. Use `"+swaggerCfg.APIServerURL+"` as the API server; CF-Router validates Bearer JWTs or `X-CF-API-Key` and injects internal service headers before proxying.")
+	}
+}
+
+func setPublicSpecServer(doc map[string]interface{}, cfg SwaggerConfig) {
+	doc["servers"] = []map[string]string{
+		{
+			"url":         cfg.APIServerURL,
+			"description": "Local development via CF-Router",
+		},
 	}
 }
 

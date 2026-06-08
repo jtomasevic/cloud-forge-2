@@ -15,7 +15,7 @@ and operator introspection.
 
 | Area | Behavior |
 |------|-----------|
-| **Reverse proxy** | Paths under `/v1/accounts`, `/v1/tenants` → **CF-Accounts**; `/v1/networks`, `/v1/gateways`, `/v1/jobs` → **CF-Provisioner** (see [`internal/rest/proxy.go`](internal/rest/proxy.go) `DefaultRouteTable`). |
+| **Reverse proxy** | Paths under `/v1/auth`, `/v1/accounts`, `/v1/tenants` → **CF-Accounts**; `/v1/networks`, `/v1/gateways`, `/v1/jobs` → **CF-Provisioner** (see [`internal/rest/proxy.go`](internal/rest/proxy.go) `DefaultRouteTable`). |
 | **Authentication** | **JWT**: RS256 verify using **JWKS** from `KEYCLOAK_JWKS_URL` (no third-party JWT lib). **API key**: BLAKE2b-256 hash → Scylla **`api_keys_by_hash`**. |
 | **Tenant resolution** | Calls CF-Accounts **`GET /internal/v1/resolve`** with **`X-CF-Internal-Secret`** (`CF_INTERNAL_SECRET`). |
 | **Header injection** | Sets `X-CF-Tenant-ID`, `X-CF-Account-ID`, `X-CF-Network-ID`, `X-CF-Region`, `X-CF-Internal-Secret` on upstream requests. **Strips** `X-CF-API-Key` so raw keys never reach CF services. |
@@ -168,6 +168,7 @@ and upstream URLs consistent with your route table.
 |----------|---------|-------------|
 | `HTTP_ADDR` | `:8083` | HTTP listen address |
 | `SWAGGER_ADDR` | `:8090` | Public, unauthenticated Swagger/OpenAPI docs listen address. Set to `off` to disable. |
+| `SWAGGER_API_BASE_URL` | `http://localhost:8083` | API server URL written into the public OpenAPI docs. Use `/` when serving docs through the local Envoy Gateway so Swagger calls the same gateway origin. |
 | `SCYLLADB_HOSTS` | `localhost:9042` | Scylla contact points (comma / space / semicolon separated) |
 | `SCYLLADB_KEYSPACE` | `cloudforge` | Keyspace name |
 | `CF_ACCOUNTS_URL` | `http://localhost:8081` | CF-Accounts base URL (routing + HTTP client) |
@@ -192,10 +193,13 @@ Regenerates:
 
 Source spec: [`api/cf-router/v1/openapi.yaml`](../../api/cf-router/v1/openapi.yaml).
 
-When CF-Router is running, public aggregated docs are available without
-credentials at `http://localhost:8090/swagger/`. The Swagger UI contains specs
-for CF-Router native endpoints plus CF-Accounts and CF-Provisioner routes as
-they are exposed through CF-Router on `http://localhost:8083`.
+When CF-Router is running directly, public aggregated docs are available without
+credentials at `http://localhost:8090/swagger/`. In k3d with Envoy Gateway,
+the same docs are exposed at `http://api.cloudforge.local:18080/swagger/`.
+The Swagger UI contains specs for CF-Router native endpoints plus CF-Accounts
+and CF-Provisioner routes as they are exposed through CF-Router. The k3d
+manifest sets `SWAGGER_API_BASE_URL=/` so Swagger "try it out" requests stay on
+the same Envoy origin for both HTTP and HTTPS.
 
 Raw OpenAPI documents:
 

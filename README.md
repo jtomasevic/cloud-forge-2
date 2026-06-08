@@ -18,4 +18,6 @@ See `docs/plan/README.md` for the full development setup guide.
 
 ## Quick start
 
-See `docs/plan/README.md`.
+- See `docs/plan/README.md`.
+- Check other documents under `docs/`
+

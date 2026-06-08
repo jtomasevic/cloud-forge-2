@@ -1197,7 +1197,7 @@ cloud-forge-2/
 ### 14.3 go.work File
 
 ```go
-go 1.23
+go 1.26
 
 use (
     ./services/cf-router

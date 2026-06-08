@@ -7,6 +7,7 @@
 //
 //  1. Decide **which upstream service** owns that path (routing table).
 //  2. **Authenticate** the caller (JWT and/or API key) and **resolve tenant** (service layer + CF-Accounts).
+//     Public signup (`POST /v1/accounts`) and password login (`POST /v1/auth/login`) are the exceptions.
 //  3. **Mutate** the outgoing request: add trusted headers (tenant id, internal secret) and **remove**
 //     secrets that must never reach upstream (raw API key).
 //  4. **Forward** the HTTP method, path, query, and body to the upstream as if the client had called
@@ -28,7 +29,7 @@
 //
 //	Client → CF-Router outer handler ([ProxyHandler] closure):
 //	  • Match path prefix → pick upstream base URL (e.g. http://cf-accounts:8081).
-//	  • ValidateAndResolve → tenant context (tenant/account/network/region).
+//	  • ValidateAndResolve → tenant context (tenant/account/network/region), unless the route is public.
 //	  • Clone the original request, enrich context with (route entry + tenant context).
 //	  • Delegate to ReverseProxy.ServeHTTP.
 //
@@ -37,8 +38,10 @@
 //	  • Calls Director(out):
 //	      – Set `out.URL.Scheme` and `out.URL.Host` (and `out.Host`) so the HTTP client dials the
 //	        correct upstream (the URL path is already the client path, e.g. /v1/accounts/...).
-//	      – Set `X-CF-*` headers from tenant context; set `X-CF-Internal-Secret` from config;
-//	        delete any client-supplied internal secret and delete `X-CF-API-Key`.
+//	      – For authenticated requests, set `X-CF-*` headers from tenant context and set
+//	        `X-CF-Internal-Secret` from config.
+//	      – For public signup/login, do not inject trusted headers.
+//	      – Always delete any client-supplied trusted CloudForge headers and delete `X-CF-API-Key`.
 //	  • Performs the upstream request; copies status/headers/body to the client.
 //
 // If routing fails → 404. If auth/tenant resolution fails → JSON error (no upstream call).
@@ -128,6 +131,7 @@ func (rt RouteTable) Match(path string) (RouteEntry, bool) {
 // cfAccountsURL and cfProvisionerURL should be base origins without a path, e.g. http://localhost:8081.
 func DefaultRouteTable(cfAccountsURL, cfProvisionerURL string) RouteTable {
 	return RouteTable{
+		{PathPrefix: "/v1/auth", TargetURL: cfAccountsURL, Description: "Authentication APIs (CF-Accounts)"},
 		{PathPrefix: "/v1/accounts", TargetURL: cfAccountsURL, Description: "Account APIs (CF-Accounts)"},
 		{PathPrefix: "/v1/tenants", TargetURL: cfAccountsURL, Description: "Tenant APIs (CF-Accounts)"},
 		{PathPrefix: "/v1/networks", TargetURL: cfProvisionerURL, Description: "Network APIs (CF-Provisioner)"},
@@ -155,18 +159,21 @@ type proxyCtxKey struct{}
 // entry: which upstream base URL to dial (from the routing table).
 // tc:    resolved tenant metadata to inject as X-CF-* headers on the upstream request.
 type proxyCtxVal struct {
-	entry RouteEntry
-	tc    service.TenantContext
+	entry  RouteEntry
+	tc     service.TenantContext
+	public bool
 }
 
 // ProxyHandler returns an [http.Handler] that implements the "everything except native CF-Router paths"
 // branch. It is registered on the root mux as the catch-all pattern "/" (see [NewRouter]).
 //
 // Security / header contract (Director):
-//   - Always set X-CF-Tenant-ID, X-CF-Account-ID, X-CF-Network-ID, X-CF-Region from resolved context
-//     (network/region may be empty strings when unknown).
+//   - For authenticated requests, set X-CF-Tenant-ID, X-CF-Account-ID, X-CF-Network-ID,
+//     X-CF-Region from resolved context (network/region may be empty strings when unknown).
+//   - For public signup/login (`POST /v1/accounts`, `POST /v1/auth/login`), forward without tenant
+//     context because credentials are being created or verified.
 //   - Replace/suppress X-CF-Internal-Secret: delete any client value, then set the configured secret
-//     so upstreams only see the mesh-trusted value.
+//     only for authenticated proxied calls.
 //   - Strip X-CF-API-Key: the raw secret must not be forwarded; upstream trusts router-injected headers.
 //
 // Error responses:
@@ -192,9 +199,20 @@ func ProxyHandler(svc service.RouterService, routes RouteTable, internalSecret s
 			out.URL.Host = target.Host
 			out.Host = target.Host
 
-			tc := v.tc
-			// Never trust a client-supplied internal secret on the upstream path.
+			// Never trust client-supplied CloudForge trust headers on the upstream path.
 			out.Header.Del("X-CF-Internal-Secret")
+			out.Header.Del("X-CF-Tenant-ID")
+			out.Header.Del("X-CF-Account-ID")
+			out.Header.Del("X-CF-Network-ID")
+			out.Header.Del("X-CF-Region")
+			// Critical: do not leak the raw API key to CF-Accounts / CF-Provisioner.
+			out.Header.Del("X-CF-API-Key")
+
+			if v.public {
+				return
+			}
+
+			tc := v.tc
 			secret := strings.TrimSpace(internalSecret)
 			out.Header.Set("X-CF-Tenant-ID", tc.TenantID)
 			out.Header.Set("X-CF-Account-ID", tc.AccountID)
@@ -203,8 +221,6 @@ func ProxyHandler(svc service.RouterService, routes RouteTable, internalSecret s
 			if secret != "" {
 				out.Header.Set("X-CF-Internal-Secret", secret)
 			}
-			// Critical: do not leak the raw API key to CF-Accounts / CF-Provisioner.
-			out.Header.Del("X-CF-API-Key")
 		},
 		ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 			ctx := r.Context()
@@ -227,24 +243,51 @@ func ProxyHandler(svc service.RouterService, routes RouteTable, internalSecret s
 			return
 		}
 
-		// 2) Authenticate + resolve tenant (Scylla + JWKS + CF-Accounts internal resolve).
-		params := service.ValidateParams{
-			AuthorizationHeader: r.Header.Get("Authorization"),
-			APIKeyHeader:        r.Header.Get("X-CF-API-Key"),
-		}
-		tc, err := svc.ValidateAndResolve(ctx, params)
-		if err != nil {
-			st, body := mapServiceError(ctx, err)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(st)
-			_ = json.NewEncoder(w).Encode(body)
-			return
+		public, canonicalPath := publicProxyRequest(r)
+		var tc service.TenantContext
+		if !public {
+			// 2) Authenticate + resolve tenant (Scylla + JWKS + CF-Accounts internal resolve).
+			params := service.ValidateParams{
+				AuthorizationHeader: r.Header.Get("Authorization"),
+				APIKeyHeader:        r.Header.Get("X-CF-API-Key"),
+			}
+			var err error
+			tc, err = svc.ValidateAndResolve(ctx, params)
+			if err != nil {
+				st, body := mapServiceError(ctx, err)
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(st)
+				_ = json.NewEncoder(w).Encode(body)
+				return
+			}
 		}
 
 		// 3) Clone so we do not mutate the original *http.Request seen by middleware/logging.
 		//    Attach routing + tenant info for the Director (step 4 inside ReverseProxy).
 		pr := r.Clone(ctx)
-		pr = pr.WithContext(context.WithValue(pr.Context(), proxyCtxKey{}, proxyCtxVal{entry: entry, tc: tc}))
+		if canonicalPath != "" {
+			pr.URL.Path = canonicalPath
+			pr.URL.RawPath = ""
+		}
+		pr = pr.WithContext(context.WithValue(pr.Context(), proxyCtxKey{}, proxyCtxVal{entry: entry, tc: tc, public: public}))
 		proxy.ServeHTTP(w, pr)
 	})
+}
+
+func publicProxyRequest(r *http.Request) (bool, string) {
+	if r.Method != http.MethodPost {
+		return false, ""
+	}
+	switch r.URL.Path {
+	case "/v1/accounts":
+		return true, ""
+	case "/v1/accounts/":
+		return true, "/v1/accounts"
+	case "/v1/auth/login":
+		return true, ""
+	case "/v1/auth/login/":
+		return true, "/v1/auth/login"
+	default:
+		return false, ""
+	}
 }

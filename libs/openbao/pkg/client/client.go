@@ -5,7 +5,7 @@
 // so that callers always work with a single, consistent error hierarchy.
 package client
 
-//go:generate mockgen -destination mock/mock_secrets_client.go -package mock . SecretsClient
+//go:generate mockgen -source client.go -destination mock/mock_secrets_client.go -package mock
 
 import (
 	"context"

@@ -1,11 +1,22 @@
 # CloudForge Dev - Connection Reference
 
 ## Local dev loop
-- Setup: `make dev-setup`
-- Start local mode: `make tilt-up`
-- Start k3d mode: `CF_DEV_MODE=k8s make tilt-up`
-- Stop Tilt resources: `make tilt-down`
+- Start full k3d + Envoy Gateway mode: `make dev`
+- Start faster local Go mode: `make dev-local`
+- Prepare full k3d + Envoy Gateway mode without starting Tilt: `make dev-setup`
+- Reapply only Envoy Gateway routes: `make gateway-apply`
+- Stop Tilt resources and backing services: `make dev-down`
+- Delete the k3d cluster too: `make dev-kill`
 - End-to-end smoke test: `dev/scripts/smoke-test.sh`
+
+`make dev` and `make dev-local` clear stale Tilt listeners on `TILT_PORT`
+(`10350` by default) before starting. Use `TILT_PORT=10351 make dev` if you
+intentionally want a separate Tilt instance.
+
+`make dev` also points Tilt at the `cloudforge-dev` k3d kubeconfig automatically,
+and requires the k3d-managed local registry created by `make k3d-up`, so Tilt
+can push local images to k3d instead of `ghcr.io`. If your cluster was created
+before the local registry was added, recreate it once with `make k3d-down && make dev`.
 
 ## CloudForge services
 - CF-Accounts: http://localhost:8081
@@ -16,7 +27,8 @@
 - CF-Router OpenAPI JSON: http://localhost:8090/openapi/cf-router.json
 - CF-Accounts via CF-Router OpenAPI JSON: http://localhost:8090/openapi/cf-accounts.json
 - CF-Provisioner via CF-Router OpenAPI JSON: http://localhost:8090/openapi/cf-provisioner.json
-- Envoy Gateway via k3d LB: http://localhost:18080
+- Envoy Gateway API: http://api.cloudforge.local:18080
+- Envoy Gateway Swagger UI: http://api.cloudforge.local:18080/swagger/
 
 Use CF-Router for external API calls. CF-Provisioner routes require
 `X-CF-Internal-Secret: dev-internal-secret` when called directly.
@@ -39,9 +51,15 @@ Use CF-Router for external API calls. CF-Provisioner routes require
 - JWKS URL: http://localhost:8084/auth/realms/cloudforge/protocol/openid-connect/certs
 - Token URL: http://localhost:8084/auth/realms/cloudforge/protocol/openid-connect/token
 
-## Get a dev JWT (for testing CF-Router)
+## Get a dev JWT through CloudForge login
 ```bash
-curl -X POST http://localhost:8084/auth/realms/cloudforge/protocol/openid-connect/token \
-  -d "grant_type=password&client_id=cf-console&username=dev-user@cloudforge.io&password=devpassword" \
-  | jq -r .access_token
+curl -sf -X POST http://api.cloudforge.local:18080/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"dev-user@cloudforge.io","password":"devpassword"}' \
+  | jq -r .accessToken
 ```
+
+For a newly signed-up account, use the email and password submitted to
+`POST /v1/accounts` with `POST /v1/auth/login`; CF-Accounts creates the
+matching Keycloak user during signup and returns a Keycloak access token from
+the login endpoint.

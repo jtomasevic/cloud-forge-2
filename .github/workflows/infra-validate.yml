@@ -1,0 +1,48 @@
+name: Infrastructure Validation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "dev/k8s/**"
+      - "api/**/*.yaml"
+      - ".github/workflows/infra-validate.yml"
+  pull_request:
+    paths:
+      - "dev/k8s/**"
+      - "api/**/*.yaml"
+      - ".github/workflows/infra-validate.yml"
+
+jobs:
+  validate-manifests:
+    name: Validate Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install kubeconform
+        run: |
+          curl -L https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /usr/local/bin/
+      - name: Validate manifests
+        run: |
+          find dev/k8s -name '*.yaml' -print0 | xargs -0 kubeconform \
+            -strict \
+            -ignore-missing-schemas \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json'
+
+  validate-openapi:
+    name: Validate OpenAPI specs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install Spectral
+        run: npm install -g @stoplight/spectral-cli
+      - name: Lint OpenAPI specs
+        run: |
+          spectral lint api/cf-accounts/v1/openapi.yaml
+          spectral lint api/cf-provisioner/v1/openapi.yaml
+          spectral lint api/cf-router/v1/openapi.yaml

@@ -78,6 +78,18 @@ type LoginWithPasswordParams struct {
 	Password string
 }
 
+// LoginResult is returned from password login: token material plus the active account.
+type LoginResult struct {
+	AccessToken      string
+	RefreshToken     string
+	IDToken          string
+	TokenType        string
+	Scope            string
+	ExpiresIn        int
+	RefreshExpiresIn int
+	Account          Account
+}
+
 // CreateNetworkParams holds input for CreateNetwork.
 type CreateNetworkParams struct {
 	TenantID string

@@ -4,8 +4,8 @@ HTTP API service for CloudForge **accounts**, **tenants**, **networks**, **API c
 
 ## Features (service + HTTP)
 
-- **Signup** — `POST /v1/accounts` accepts `email` and `password`. Passwords are stored as **bcrypt** hashes only (`password_hash` column). The response is **`CreateAccountResult`**: `account` plus **`defaultTenant`** (id, slug, `provisioning`) so clients do not need an extra list call.
-- **Login** — `POST /v1/auth/login` (no Bearer auth on this route). Password must meet the same **minimum length (8)** as signup (OpenAPI + service). Invalid password shape returns **400** (`INVALID_INPUT`); wrong email/password for an otherwise valid request returns **401** (`UNAUTHORIZED`) without distinguishing unknown email from bad password.
+- **Signup** — `POST /v1/accounts` accepts `email` and `password`. It creates a matching Keycloak user with a `cf_account_id` attribute, stores only a **bcrypt** password hash in ScyllaDB (`password_hash` column), and returns **`CreateAccountResult`**: `account` plus an active **`defaultTenant`** (id, slug, `active`) so clients do not need an extra list call.
+- **Login** — `POST /v1/auth/login` (no Bearer auth on this route). Password must meet the same **minimum length (8)** as signup (OpenAPI + service). CF-Accounts authenticates through Keycloak, verifies the linked active CloudForge account, and returns access-token data plus the account. Invalid password shape returns **400** (`INVALID_INPUT`); wrong email/password for an otherwise valid request returns **401** (`UNAUTHORIZED`) without distinguishing unknown email from bad password.
 - **OpenAPI** — Server stubs live under `internal/rest/generated/` (`go generate ./...` from this module). The REST layer maps generated DTOs ↔ service models in `internal/rest/models_transform.go`.
 
 ## Run locally
@@ -31,7 +31,7 @@ After creating an account, you can log in:
 
 ```bash
 curl -sS -X POST "http://localhost:8081/v1/auth/login" \
-  -H 'Content-Type: application/json' \
+  -H "Content-Type: application/json" \
   -d '{"email":"you@example.com","password":"your-secure-password"}'
 ```
 
