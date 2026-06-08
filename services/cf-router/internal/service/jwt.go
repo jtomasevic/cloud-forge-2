@@ -109,7 +109,9 @@ func (s *cfRouterService) fetchJWKS(ctx context.Context) (map[string]*rsa.Public
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
 		return nil, fmt.Errorf("jwks: status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))

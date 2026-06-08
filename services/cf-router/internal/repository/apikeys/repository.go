@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gocql/gocql"
+
 	scylladbclient "github.com/jtomasevic/cloud-forge-2/libs/scylladb/pkg/client"
 )
 

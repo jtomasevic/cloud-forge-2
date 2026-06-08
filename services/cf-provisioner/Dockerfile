@@ -1,7 +1,8 @@
 FROM golang:1.26-alpine AS builder
 WORKDIR /build
 
-COPY go.work go.work.sum ./
+# COPY go.work go.work.sum ./
+COPY go.work ./
 COPY libs/ libs/
 COPY services/cf-provisioner/ services/cf-provisioner/
 

@@ -83,6 +83,10 @@ func NewKeycloakProvider(cfg KeycloakConfig) (*KeycloakProvider, error) {
 	}, nil
 }
 
+func closeResponseBody(resp *http.Response) {
+	_ = resp.Body.Close()
+}
+
 func (p *KeycloakProvider) CreateUser(ctx context.Context, params CreateUserParams) (User, error) {
 	id := strings.TrimSpace(params.ID)
 	accountID := strings.TrimSpace(params.AccountID)
@@ -106,7 +110,7 @@ func (p *KeycloakProvider) CreateUser(ctx context.Context, params CreateUserPara
 		LastName:        "CloudForge",
 		RequiredActions: []string{},
 		Attributes: map[string][]string{
-			"cf_account_id": []string{accountID},
+			"cf_account_id": {accountID},
 		},
 		Credentials: []keycloakCredential{
 			{
@@ -132,7 +136,7 @@ func (p *KeycloakProvider) CreateUser(ctx context.Context, params CreateUserPara
 	if err != nil {
 		return User{}, cferrors.Wrap(cferrors.CodeUnavailable, "create identity user", err)
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	switch resp.StatusCode {
 	case http.StatusCreated, http.StatusNoContent:
@@ -200,7 +204,7 @@ func (p *KeycloakProvider) AuthenticatePassword(ctx context.Context, params Auth
 	if err != nil {
 		return TokenSet{}, cferrors.Wrap(cferrors.CodeUnavailable, "request identity password token", err)
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	if resp.StatusCode != http.StatusOK {
 		return TokenSet{}, p.passwordTokenStatusError(resp)
@@ -250,7 +254,7 @@ func (p *KeycloakProvider) deleteUserWithToken(ctx context.Context, token, id st
 	if err != nil {
 		return cferrors.Wrap(cferrors.CodeUnavailable, "delete identity user", err)
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	switch resp.StatusCode {
 	case http.StatusNoContent, http.StatusNotFound:
@@ -279,7 +283,7 @@ func (p *KeycloakProvider) updateUser(ctx context.Context, token, userID string,
 	if err != nil {
 		return cferrors.Wrap(cferrors.CodeUnavailable, "update identity user", err)
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 
 	switch resp.StatusCode {
 	case http.StatusNoContent:
@@ -311,7 +315,7 @@ func (p *KeycloakProvider) findUserIDByUsername(ctx context.Context, token, user
 	if err != nil {
 		return "", cferrors.Wrap(cferrors.CodeUnavailable, "lookup identity user", err)
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 	if resp.StatusCode != http.StatusOK {
 		return "", p.statusError(resp, "lookup identity user")
 	}
@@ -354,7 +358,7 @@ func (p *KeycloakProvider) adminToken(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", cferrors.Wrap(cferrors.CodeUnavailable, "request identity admin token", err)
 	}
-	defer resp.Body.Close()
+	defer closeResponseBody(resp)
 	if resp.StatusCode != http.StatusOK {
 		return "", p.statusError(resp, "request identity admin token")
 	}

@@ -12,10 +12,11 @@ import (
 
 	"github.com/google/uuid"
 
+	"golang.org/x/crypto/blake2b"
+
 	cfaccountsclient "github.com/jtomasevic/cloud-forge-2/libs/clients/cf-accounts/v1"
 	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 	apikeysrepo "github.com/jtomasevic/cloud-forge-2/services/cf-router/internal/repository/apikeys"
-	"golang.org/x/crypto/blake2b"
 )
 
 // cfRouterService implements [RouterService]. JWKS keys are cached under jwksMu.

@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/jtomasevic/cloud-forge-2/services/cf-router/internal/rest/generated"
 	"gopkg.in/yaml.v3"
+
+	"github.com/jtomasevic/cloud-forge-2/services/cf-router/internal/rest/generated"
 )
 
 const defaultSwaggerAPIServerURL = "http://localhost:8083"
@@ -136,7 +137,7 @@ func publicSwaggerJSON(id string, swaggerCfg SwaggerConfig) ([]byte, error) {
 }
 
 func cfRouterSwaggerJSON(swaggerCfg SwaggerConfig) ([]byte, error) {
-	spec, err := generated.GetSwagger()
+	spec, err := generated.GetSpec()
 	if err != nil {
 		return nil, err
 	}

@@ -5,12 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 	gatewayfake "sigs.k8s.io/gateway-api/pkg/client/clientset/versioned/fake"
+
+	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 )
 
 func TestGetHTTPRoute_NotFound(t *testing.T) {
-	cs := gatewayfake.NewSimpleClientset()
+	cs := gatewayfake.NewClientset()
 	c := newCfGatewayClientForTest(cs)
 	_, err := c.GetHTTPRoute(context.Background(), "ns", "missing")
 	if err == nil {
@@ -22,7 +23,7 @@ func TestGetHTTPRoute_NotFound(t *testing.T) {
 }
 
 func TestCreateHTTPRoute_Validation(t *testing.T) {
-	cs := gatewayfake.NewSimpleClientset()
+	cs := gatewayfake.NewClientset()
 	c := newCfGatewayClientForTest(cs)
 	_, err := c.CreateHTTPRoute(context.Background(), HTTPRouteParams{})
 	if err == nil {
