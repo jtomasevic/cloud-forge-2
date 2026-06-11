@@ -2,7 +2,7 @@
 
 ## What This Plan Is
 
-This plan translates the architecture proposal in [`docs/cf-private-network.md`](../cf-private-network.md) into an ordered sequence of executable implementation tasks. Each task file is a self-contained prompt written for Claude Sonnet 4.6. Tasks must be executed in order unless stated otherwise, because later tasks depend on artifacts produced by earlier ones.
+This plan translates the architecture proposal in [`docs/cf-private-network.md`](../cf-private-network.md) into an ordered sequence of executable implementation tasks. It now also includes the CF App Service expansion described in [`docs/cf-app-service.md`](../cf-app-service.md). Each task file is a self-contained prompt written for implementation work. Tasks must be executed in order unless stated otherwise, because later tasks depend on artifacts produced by earlier ones.
 
 The plan is iterative by design: infrastructure libraries are built first, then each CF service is built layer by layer (OpenAPI spec → codegen → repository → service → REST), and finally the developer environment is assembled to make everything runnable locally.
 
@@ -53,11 +53,31 @@ Assembles a fully functional local development environment where all three CF se
 - Tiltfile for live-reload local development loop
 - Envoy Gateway configuration and GitHub Actions CI/CD workflows
 
+### Phase 5 Follow-up — Signup And Login (Tasks 23–24)
+Completes the first usable account flow on top of the local development environment.
+
+- Signup creates a Keycloak identity and active default tenant
+- Login returns a Keycloak access token usable with CF-Router and Swagger Authorize
+
+### Phase 6 — CF App Service (Tasks 25–37)
+Extends CloudForge Private Network with Docker-based application workloads placed into private or public subnets.
+
+- Durable subnet persistence in ScyllaDB
+- CF App Service OpenAPI contract and generated clients
+- App service persistence and repository layer
+- Kubernetes Deployment/Service workload mapping
+- Service-specific Envoy Gateway and Cilium routing
+- Service-layer and REST-layer orchestration
+- Public Swagger/OpenAPI page for every app service exposed through Internet Gateway
+- Local k3d/Tilt examples and smoke tests
+- gRPC/TCP route support after HTTP MVP
+- Production hardening and CI/CD validation
+
 ---
 
 ## End Result
 
-After all 22 tasks are complete, the following is true:
+After all private-network foundation tasks are complete, the following is true:
 
 1. **All three CF services compile and pass tests** — CF-Accounts, CF-Provisioner, CF-Router
 2. **The full tenant onboarding flow works locally** — a developer can create an account, provision a private network (a real vCluster on k3d), and verify Cilium isolation policies are applied
@@ -65,6 +85,14 @@ After all 22 tasks are complete, the following is true:
 4. **API credentials work end-to-end** — an API key can be created, its hash verified against ScyllaDB, and the request routed to the correct service via CF-Router
 5. **All services are accessible via localhost** — see the Local Access section below
 6. **CI/CD is operational** — GitHub Actions runs lint, unit tests, integration tests, codegen drift check, and image builds on every PR
+
+After the CF App Service tasks are complete, the following is also true:
+
+1. **Tenant workloads can be deployed** — users can create Docker-based app services inside active private networks
+2. **Subnet placement is durable** — private/public subnets are persisted in ScyllaDB and can be used for app placement after process restart
+3. **Public exposure is service-specific** — Internet Gateway routes point to the selected app service backend, not a placeholder
+4. **Public app services are documented** — every app service exposed through Internet Gateway has a publicly reachable Swagger page and OpenAPI JSON route
+5. **Protocol support is extensible** — HTTP/REST is the MVP path, with gRPC and TCP route support planned after the core model is stable
 
 ---
 
@@ -195,3 +223,24 @@ Tasks must be executed in order. Each task file contains a complete Claude Sonne
 20. [20.DevEnvironmentDockerCompose.md](20.DevEnvironmentDockerCompose.md) — Docker Compose for ScyllaDB, OpenBao, Keycloak
 21. [21.TiltfileAndLocalDevLoop.md](21.TiltfileAndLocalDevLoop.md) — Tiltfile, Makefile, local access documentation
 22. [22.EnvoyGatewayAndCICD.md](22.EnvoyGatewayAndCICD.md) — Envoy Gateway HTTPRoute manifests and GitHub Actions CI/CD workflows
+
+### Phase 5 Follow-up — Signup And Login
+
+23. [23.SignUpFollowUp.md](23.SignUpFollowUp.md) — Signup identity creation and default tenant activation
+24. [24.CFAccountsLoginToken.md](24.CFAccountsLoginToken.md) — Login endpoint returns Keycloak access token
+
+### Phase 6 — CF App Service
+
+25. [25.CFProvisionerDurableSubnetPersistence.md](25.CFProvisionerDurableSubnetPersistence.md) — Persist private/public subnet records in ScyllaDB
+26. [26.CFAppServiceOpenAPISpec.md](26.CFAppServiceOpenAPISpec.md) — Define CF App Service API contract and public Swagger requirement
+27. [27.CFAppServiceCodegenAndClient.md](27.CFAppServiceCodegenAndClient.md) — Regenerate server stubs and clients for app-service APIs
+28. [28.CFAppServiceSchemaAndMigrations.md](28.CFAppServiceSchemaAndMigrations.md) — Add app service tables and lifecycle job types
+29. [29.CFAppServiceRepositoryLayer.md](29.CFAppServiceRepositoryLayer.md) — Add durable app service state repository
+30. [30.CFAppServiceKubernetesWorkloadRepository.md](30.CFAppServiceKubernetesWorkloadRepository.md) — Map app services to Kubernetes Deployment and Service
+31. [31.CFAppServiceGatewayAndCiliumRouting.md](31.CFAppServiceGatewayAndCiliumRouting.md) — Route Internet Gateway traffic to specific app services and policies
+32. [32.CFAppServiceServiceLayer.md](32.CFAppServiceServiceLayer.md) — Implement service-layer validation and orchestration
+33. [33.CFAppServiceRESTLayerAndRouter.md](33.CFAppServiceRESTLayerAndRouter.md) — Expose REST handlers and CF-Router forwarding
+34. [34.CFAppServicePublicSwaggerExposure.md](34.CFAppServicePublicSwaggerExposure.md) — Require and expose public Swagger/OpenAPI docs for internet-exposed app services
+35. [35.CFAppServiceLocalDevLoopAndExamples.md](35.CFAppServiceLocalDevLoopAndExamples.md) — Add local examples, smoke tests, and Make/Tilt support
+36. [36.CFAppServiceProtocolRoutesGrpcTcp.md](36.CFAppServiceProtocolRoutesGrpcTcp.md) — Add gRPC and TCP Gateway API route support
+37. [37.CFAppServiceProductionHardeningAndCICD.md](37.CFAppServiceProductionHardeningAndCICD.md) — Add production guardrails and CI/CD coverage
