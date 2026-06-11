@@ -64,12 +64,6 @@ func (c *cfVClusterClient) Create(ctx context.Context, params CreateVClusterPara
 		return VClusterInfo{}, err
 	}
 	args := []string{"create", params.Name, "-n", params.Namespace, "--connect=false"}
-	if params.PodCIDR != "" {
-		args = append(args, "--pod-cidr="+params.PodCIDR)
-	}
-	if params.SvcCIDR != "" {
-		args = append(args, "--service-cidr="+params.SvcCIDR)
-	}
 	out, err := c.exec.CombinedOutput(ctx, "vcluster", args...)
 	if mapErr := mapVClusterCLIError(out, err); mapErr != nil {
 		return VClusterInfo{}, mapErr
@@ -147,7 +141,7 @@ func (c *cfVClusterClient) Delete(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	args := append([]string{"delete", name, "-n", ns}, "--force")
+	args := []string{"delete", name, "-n", ns, "--ignore-not-found"}
 	out, err := c.exec.CombinedOutput(ctx, "vcluster", args...)
 	return mapVClusterCLIError(out, err)
 }
@@ -184,7 +178,11 @@ func mapVClusterCLIError(out []byte, execErr error) error {
 	if strings.Contains(msg, "not found") {
 		return cferrors.Wrapf(ErrVClusterNotFound, "vcluster cli: %s", firstLine(string(out)))
 	}
-	return cferrors.Wrap(cferrors.CodeInternal, "vcluster cli failed", cferrors.ErrInternal)
+	detail := strings.TrimSpace(firstLine(string(out)))
+	if detail == "" {
+		detail = execErr.Error()
+	}
+	return cferrors.Wrap(cferrors.CodeInternal, "vcluster cli failed: "+detail, cferrors.ErrInternal)
 }
 
 func firstLine(s string) string {

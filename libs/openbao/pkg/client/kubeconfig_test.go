@@ -206,6 +206,20 @@ func TestRevokeKubeconfig_DeleteError(t *testing.T) {
 	}
 }
 
+func TestRevokeKubeconfig_SecretNotFoundSucceeds(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	m := mock.NewMockSecretsClient(ctrl)
+
+	m.EXPECT().
+		Delete(gomock.Any(), expectedPath).
+		Return(client.ErrSecretNotFound)
+
+	err := client.RevokeKubeconfig(context.Background(), m, testTenantID)
+	if err != nil {
+		t.Errorf("expected nil error, got %v", err)
+	}
+}
+
 func TestRevokeKubeconfig_UsesCorrectPath(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	m := mock.NewMockSecretsClient(ctrl)

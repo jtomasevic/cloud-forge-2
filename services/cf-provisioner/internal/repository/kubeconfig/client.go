@@ -37,5 +37,11 @@ func (r *cfKubeconfigRepository) Revoke(ctx context.Context, tenantID string) er
 	if r.secrets == nil {
 		return cferrors.Wrap(cferrors.CodeInternal, "secrets client is nil", cferrors.ErrInternal)
 	}
-	return openbao.RevokeKubeconfig(ctx, r.secrets, tenantID)
+	if err := openbao.RevokeKubeconfig(ctx, r.secrets, tenantID); err != nil {
+		if errors.Is(err, openbao.ErrSecretNotFound) {
+			return nil
+		}
+		return err
+	}
+	return nil
 }

@@ -16,7 +16,6 @@ type jobsRepository struct {
 	session *scylladbclient.Session
 }
 
-// zeroTenantID is stored in provisioning_jobs.tenant_id until the control plane threads tenant context into job creation.
 var zeroTenantID gocql.UUID
 
 func (r *jobsRepository) Create(ctx context.Context, params CreateJobParams) (Job, error) {
@@ -30,6 +29,14 @@ func (r *jobsRepository) Create(ctx context.Context, params CreateJobParams) (Jo
 	if err != nil {
 		return Job{}, err
 	}
+	tid := zeroTenantID
+	tenantID := strings.TrimSpace(params.TenantID)
+	if tenantID != "" {
+		tid, err = parseUUID(tenantID)
+		if err != nil {
+			return Job{}, err
+		}
+	}
 	jid, err := gocql.RandomUUID()
 	if err != nil {
 		return Job{}, mapInternalErr(err)
@@ -37,7 +44,7 @@ func (r *jobsRepository) Create(ctx context.Context, params CreateJobParams) (Jo
 	now := time.Now().UTC()
 	status := string(JobStatusPending)
 	jt := string(params.Type)
-	if err := r.session.Query(cqlInsertJob, jid, zeroTenantID, nid, jt, status, "", now, now).WithContext(ctx).Exec(); err != nil {
+	if err := r.session.Query(cqlInsertJob, jid, tid, nid, jt, status, "", now, now).WithContext(ctx).Exec(); err != nil {
 		return Job{}, mapInternalErr(err)
 	}
 	if err := r.session.Query(cqlInsertJobByNetwork, nid, jid, jt, status, now).WithContext(ctx).Exec(); err != nil {
@@ -45,6 +52,7 @@ func (r *jobsRepository) Create(ctx context.Context, params CreateJobParams) (Jo
 	}
 	return Job{
 		ID:           jid.String(),
+		TenantID:     tenantID,
 		NetworkID:    params.NetworkID,
 		Type:         params.Type,
 		Status:       JobStatusPending,
@@ -73,9 +81,13 @@ func (r *jobsRepository) scanJob(ctx context.Context, id gocql.UUID) (Job, error
 	); err != nil {
 		return Job{}, mapScanErr(err, ErrJobNotFound)
 	}
-	_ = tenantID
+	tenantIDString := tenantID.String()
+	if tenantID == zeroTenantID {
+		tenantIDString = ""
+	}
 	return Job{
 		ID:           rowID.String(),
+		TenantID:     tenantIDString,
 		NetworkID:    nid.String(),
 		Type:         JobType(jt),
 		Status:       JobStatus(status),

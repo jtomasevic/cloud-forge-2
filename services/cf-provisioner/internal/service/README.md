@@ -7,8 +7,8 @@ so handlers stay thin.
 
 ## Purpose
 
-- **Coordinate** CIDR allocation, vCluster lifecycle, Cilium policies, Gateway API HTTPRoutes,
-  kubeconfig storage (OpenBao), and Scylla job rows.
+- **Coordinate** CIDR allocation, durable subnet metadata, vCluster lifecycle, Cilium policies,
+  Gateway API HTTPRoutes, kubeconfig storage (OpenBao), and Scylla job rows.
 - **Expose** a stable API (`ProvisionerService`) for the rest of the service binary.
 - **Return quickly** for long operations: persist a `pending` job, run work in a goroutine with
   `context.Background()`, update the job to `running` / `succeeded` / `failed`.
@@ -52,33 +52,31 @@ cd services/cf-provisioner && go generate ./internal/service/...
                     │      (CFProvisionerService)         │
                     └──────────────────┬──────────────────┘
                                        │
-         ┌─────────────────────────────┼─────────────────────────────┐
-         │                             │                             │
-         ▼                             ▼                             ▼
-  ┌──────────────┐              ┌──────────────┐              ┌──────────────┐
-  │  In-memory   │              │  Jobs repo   │              │  CIDR repo   │
-  │  hints/maps  │              │  (Scylla)    │              │  (Scylla)    │
-  │ tenant, ns,  │              │ async status │              │ allocate /   │
-  │ subnets      │              │ + list       │              │ get / release│
-  └──────────────┘              └──────────────┘              └──────────────┘
-         │                             │                             │
-         │                             └──────────────┬──────────────┘
-         │                                            │
-         └────────────────────────────┬───────────────┘
-                                      │
-         ┌────────────────────────────┼────────────────────────────┐
-         ▼                            ▼                            ▼
-  ┌──────────────┐            ┌──────────────┐            ┌──────────────┐
-  │  VCluster    │            │   Cilium     │            │   Gateway    │
-  │  client      │            │   client     │            │   client     │
-  │  (host kube) │            │  CNPs        │            │  HTTPRoute   │
-  └──────────────┘            └──────────────┘            └──────────────┘
-                                      │
-                                      ▼
-                              ┌──────────────┐
-                              │ Kubeconfig   │
-                              │ (OpenBao)    │
-                              └──────────────┘
+         ┌────────────────────────┬────────────────────────┬────────────────────────┐
+         │                        │                        │                        │
+         ▼                        ▼                        ▼                        ▼
+  ┌──────────────┐         ┌──────────────┐         ┌──────────────┐         ┌──────────────┐
+  │  In-memory   │         │  Jobs repo   │         │  CIDR repo   │         │ Subnets repo │
+  │  hints/maps  │         │  (Scylla)    │         │  (Scylla)    │         │  (Scylla)    │
+  │ tenant, ns   │         │ async status │         │ allocate /   │         │ create/list  │
+  │              │         │ + list       │         │ get / release│         │ + lookup     │
+  └──────────────┘         └──────────────┘         └──────────────┘         └──────────────┘
+         │                        │                        │                        │
+         └────────────────────────┴────────────┬───────────┴────────────────────────┘
+                                               │
+         ┌─────────────────────────────────────┼─────────────────────────────────────┐
+         ▼                                     ▼                                     ▼
+  ┌──────────────┐                     ┌──────────────┐                     ┌──────────────┐
+  │  VCluster    │                     │   Cilium     │                     │   Gateway    │
+  │  client      │                     │   client     │                     │   client     │
+  │  (host kube) │                     │  CNPs        │                     │  HTTPRoute   │
+  └──────────────┘                     └──────────────┘                     └──────────────┘
+                                               │
+                                               ▼
+                                       ┌──────────────┐
+                                       │ Kubeconfig   │
+                                       │ (OpenBao)    │
+                                       └──────────────┘
 ```
 
 ## Flow: provision network (sync + async)
@@ -136,7 +134,7 @@ Async goroutine (runDeprovisionNetwork)
    └─────────┬────────┘
              │
              ▼
-   clear in-memory maps ; Job: succeeded
+   clear in-memory tenant/namespace hints ; Job: succeeded
 ```
 
 ## Flow: gateway provision / remove

@@ -13,7 +13,7 @@ responses. It is not the place for infrastructure logic; that stays in `internal
 - **Jobs**: poll async work (`GET /v1/jobs/{jobId}`), list per network (`GET /v1/networks/{id}/jobs`).
 - **Gateways**: provision and remove internet ingress (`POST` / `DELETE …/gateway`), read status
   (`GET …/gateway`).
-- **Subnets**: create and list (in-memory in the current service implementation).
+- **Subnets**: create and list durable private/public subnet metadata.
 - **CIDR**: operator listing of allocations (`GET /v1/cidr/allocations`).
 - Enforces **internal-only** access via header `X-CF-Internal-Secret` (see [server.go](server.go)).
 

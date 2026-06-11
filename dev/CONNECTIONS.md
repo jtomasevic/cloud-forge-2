@@ -16,7 +16,8 @@ intentionally want a separate Tilt instance.
 `make dev` also points Tilt at the `cloudforge-dev` k3d kubeconfig automatically,
 and requires the k3d-managed local registry created by `make k3d-up`, so Tilt
 can push local images to k3d instead of `ghcr.io`. If your cluster was created
-before the local registry was added, recreate it once with `make k3d-down && make dev`.
+before the local registry was added, `make k3d-up`, `make dev-setup`, and
+`make dev` recreate the disposable k3d cluster automatically.
 
 ## CloudForge services
 - CF-Accounts: http://localhost:8081

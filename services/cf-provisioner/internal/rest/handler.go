@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 
 	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 	cfmiddleware "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/middleware"
@@ -19,6 +20,10 @@ type Handler struct {
 	svc service.ProvisionerService
 }
 
+type TrustedProvisionContext struct {
+	TenantID string
+}
+
 // NewHandler returns a REST handler backed by svc.
 func NewHandler(svc service.ProvisionerService) *Handler {
 	return &Handler{svc: svc}
@@ -29,6 +34,35 @@ func badRequest(ctx context.Context, message string) generated.BadRequestJSONRes
 		Code:    string(cferrors.CodeInvalidInput),
 		Message: message,
 	}))
+}
+
+func trustedProvisionContext(ctx context.Context) TrustedProvisionContext {
+	r := HTTPRequestFromContext(ctx)
+	if r == nil {
+		return TrustedProvisionContext{}
+	}
+	return TrustedProvisionContext{
+		TenantID: strings.TrimSpace(r.Header.Get("X-CF-Tenant-ID")),
+	}
+}
+
+func tenantAllowed(ctx context.Context, tenantID string) bool {
+	trustedTenantID := trustedProvisionContext(ctx).TenantID
+	if trustedTenantID == "" || strings.TrimSpace(tenantID) == "" {
+		return true
+	}
+	return strings.TrimSpace(tenantID) == trustedTenantID
+}
+
+func (h *Handler) authorizeNetwork(ctx context.Context, networkID string) (service.NetworkStatus, error) {
+	st, err := h.svc.GetNetworkStatus(ctx, networkID)
+	if err != nil {
+		return service.NetworkStatus{}, err
+	}
+	if !tenantAllowed(ctx, st.TenantID) {
+		return service.NetworkStatus{}, service.ErrNetworkNotFound
+	}
+	return st, nil
 }
 
 func (h *Handler) ListCIDRAllocations(ctx context.Context, request generated.ListCIDRAllocationsRequestObject) (generated.ListCIDRAllocationsResponseObject, error) {
@@ -68,6 +102,9 @@ func (h *Handler) GetJob(ctx context.Context, request generated.GetJobRequestObj
 	if err != nil {
 		return mapGetJobError(ctx, err), nil
 	}
+	if !tenantAllowed(ctx, job.TenantID) {
+		return mapGetJobError(ctx, service.ErrJobNotFound), nil
+	}
 	out, err := ToJobFromService(job)
 	if err != nil {
 		return generated.GetJob500JSONResponse{InternalServerErrorJSONResponse: generated.InternalServerErrorJSONResponse(
@@ -95,7 +132,7 @@ func (h *Handler) ProvisionNetwork(ctx context.Context, request generated.Provis
 	if request.Body == nil {
 		return generated.ProvisionNetwork400JSONResponse{BadRequestJSONResponse: badRequest(ctx, "request body is required")}, nil
 	}
-	params, err := ToServiceProvisionNetworkParams(request.Body)
+	params, err := ToServiceProvisionNetworkParams(request.Body, trustedProvisionContext(ctx))
 	if err != nil {
 		return generated.ProvisionNetwork400JSONResponse{BadRequestJSONResponse: badRequest(ctx, err.Error())}, nil
 	}
@@ -129,6 +166,9 @@ func mapProvisionNetworkError(ctx context.Context, err error) generated.Provisio
 }
 
 func (h *Handler) DeprovisionNetwork(ctx context.Context, request generated.DeprovisionNetworkRequestObject) (generated.DeprovisionNetworkResponseObject, error) {
+	if _, err := h.authorizeNetwork(ctx, request.NetworkId.String()); err != nil {
+		return mapDeprovisionNetworkError(ctx, err), nil
+	}
 	job, err := h.svc.DeprovisionNetwork(ctx, request.NetworkId.String())
 	if err != nil {
 		return mapDeprovisionNetworkError(ctx, err), nil
@@ -159,7 +199,7 @@ func mapDeprovisionNetworkError(ctx context.Context, err error) generated.Deprov
 }
 
 func (h *Handler) GetNetworkProvisioningStatus(ctx context.Context, request generated.GetNetworkProvisioningStatusRequestObject) (generated.GetNetworkProvisioningStatusResponseObject, error) {
-	st, err := h.svc.GetNetworkStatus(ctx, request.NetworkId.String())
+	st, err := h.authorizeNetwork(ctx, request.NetworkId.String())
 	if err != nil {
 		return mapGetNetworkProvisioningStatusError(ctx, err), nil
 	}
@@ -187,6 +227,9 @@ func mapGetNetworkProvisioningStatusError(ctx context.Context, err error) genera
 }
 
 func (h *Handler) RemoveGateway(ctx context.Context, request generated.RemoveGatewayRequestObject) (generated.RemoveGatewayResponseObject, error) {
+	if _, err := h.authorizeNetwork(ctx, request.NetworkId.String()); err != nil {
+		return mapRemoveGatewayError(ctx, err), nil
+	}
 	job, err := h.svc.RemoveGateway(ctx, request.NetworkId.String())
 	if err != nil {
 		return mapRemoveGatewayError(ctx, err), nil
@@ -217,6 +260,9 @@ func mapRemoveGatewayError(ctx context.Context, err error) generated.RemoveGatew
 }
 
 func (h *Handler) GetGatewayStatus(ctx context.Context, request generated.GetGatewayStatusRequestObject) (generated.GetGatewayStatusResponseObject, error) {
+	if _, err := h.authorizeNetwork(ctx, request.NetworkId.String()); err != nil {
+		return mapGetGatewayStatusError(ctx, err), nil
+	}
 	st, err := h.svc.GetGatewayStatus(ctx, request.NetworkId.String())
 	if err != nil {
 		return mapGetGatewayStatusError(ctx, err), nil
@@ -247,6 +293,9 @@ func mapGetGatewayStatusError(ctx context.Context, err error) generated.GetGatew
 func (h *Handler) ProvisionGateway(ctx context.Context, request generated.ProvisionGatewayRequestObject) (generated.ProvisionGatewayResponseObject, error) {
 	if request.Body == nil {
 		return generated.ProvisionGateway400JSONResponse{BadRequestJSONResponse: badRequest(ctx, "request body is required")}, nil
+	}
+	if _, err := h.authorizeNetwork(ctx, request.NetworkId.String()); err != nil {
+		return mapProvisionGatewayError(ctx, err), nil
 	}
 	params, err := ToServiceProvisionGatewayParams(request.Body)
 	if err != nil {
@@ -286,7 +335,7 @@ func mapProvisionGatewayError(ctx context.Context, err error) generated.Provisio
 
 func (h *Handler) ListNetworkJobs(ctx context.Context, request generated.ListNetworkJobsRequestObject) (generated.ListNetworkJobsResponseObject, error) {
 	networkID := request.NetworkId.String()
-	if _, err := h.svc.GetNetworkStatus(ctx, networkID); err != nil {
+	if _, err := h.authorizeNetwork(ctx, networkID); err != nil {
 		if errors.Is(err, service.ErrNetworkNotFound) {
 			_, body := mapServiceError(ctx, err)
 			return generated.ListNetworkJobs404JSONResponse{NotFoundJSONResponse: generated.NotFoundJSONResponse(body)}, nil
@@ -328,7 +377,7 @@ func mapListNetworkJobsError(ctx context.Context, err error) generated.ListNetwo
 
 func (h *Handler) ListSubnets(ctx context.Context, request generated.ListSubnetsRequestObject) (generated.ListSubnetsResponseObject, error) {
 	networkID := request.NetworkId.String()
-	if _, err := h.svc.GetNetworkStatus(ctx, networkID); err != nil {
+	if _, err := h.authorizeNetwork(ctx, networkID); err != nil {
 		if errors.Is(err, service.ErrNetworkNotFound) {
 			_, body := mapServiceError(ctx, err)
 			return generated.ListSubnets404JSONResponse{NotFoundJSONResponse: generated.NotFoundJSONResponse(body)}, nil
@@ -371,7 +420,7 @@ func (h *Handler) CreateSubnet(ctx context.Context, request generated.CreateSubn
 		return generated.CreateSubnet400JSONResponse{BadRequestJSONResponse: badRequest(ctx, "request body is required")}, nil
 	}
 	networkID := request.NetworkId.String()
-	if _, err := h.svc.GetNetworkStatus(ctx, networkID); err != nil {
+	if _, err := h.authorizeNetwork(ctx, networkID); err != nil {
 		if errors.Is(err, service.ErrNetworkNotFound) {
 			_, body := mapServiceError(ctx, err)
 			return generated.CreateSubnet404JSONResponse{NotFoundJSONResponse: generated.NotFoundJSONResponse(body)}, nil

@@ -9,8 +9,10 @@ import (
 
 	"go.uber.org/mock/gomock"
 
+	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
 	cidrrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/cidr"
 	jobsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/jobs"
+	subnetsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/subnets"
 	vclusterrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/vcluster"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/service/mocks"
 )
@@ -41,10 +43,12 @@ func TestProvisionNetwork_ReturnsPendingJob(t *testing.T) {
 	mj.EXPECT().
 		Create(gomock.Any(), jobsrepo.CreateJobParams{
 			NetworkID: testNetworkID,
+			TenantID:  "tenant-1",
 			Type:      jobsrepo.JobTypeProvisionNetwork,
 		}).
 		Return(jobsrepo.Job{
 			ID:        "job-provision-1",
+			TenantID:  "tenant-1",
 			NetworkID: testNetworkID,
 			Type:      jobsrepo.JobTypeProvisionNetwork,
 			Status:    jobsrepo.JobStatusPending,
@@ -225,10 +229,12 @@ func TestDeprovisionNetwork_RevokeBeforeVClusterDelete(t *testing.T) {
 	mj.EXPECT().
 		Create(gomock.Any(), jobsrepo.CreateJobParams{
 			NetworkID: testNetworkID,
+			TenantID:  "tenant-1",
 			Type:      jobsrepo.JobTypeDeprovisionNetwork,
 		}).
 		Return(jobsrepo.Job{
 			ID:        depJobID,
+			TenantID:  "tenant-1",
 			NetworkID: testNetworkID,
 			Type:      jobsrepo.JobTypeDeprovisionNetwork,
 			Status:    jobsrepo.JobStatusPending,
@@ -281,5 +287,110 @@ func TestDeprovisionNetwork_RevokeBeforeVClusterDelete(t *testing.T) {
 	case <-done:
 	case <-waitCtx.Done():
 		t.Fatal("timeout waiting for deprovision goroutine")
+	}
+}
+
+func TestProvisionSubnet_PersistsCanonicalCIDR(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ms := mocks.NewMockSubnetsRepository(ctrl)
+	now := time.Now().UTC()
+
+	ms.EXPECT().
+		Create(gomock.Any(), subnetsrepo.CreateSubnetParams{
+			NetworkID: testNetworkID,
+			Type:      "private",
+			CIDR:      "10.10.1.0/24",
+			Zone:      "us-east-1a",
+		}).
+		Return(subnetsrepo.Subnet{
+			ID:        "bbbbbbbb-1111-4222-8333-cccccccccccc",
+			NetworkID: testNetworkID,
+			Type:      "private",
+			CIDR:      "10.10.1.0/24",
+			Zone:      "us-east-1a",
+			CreatedAt: now,
+		}, nil)
+
+	svc := New(Deps{Subnets: ms})
+	sub, err := svc.ProvisionSubnet(context.Background(), ProvisionSubnetParams{
+		NetworkID: testNetworkID,
+		Type:      " PRIVATE ",
+		CIDR:      "10.10.1.8/24",
+		Zone:      " us-east-1a ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub.CIDR != "10.10.1.0/24" {
+		t.Fatalf("canonical CIDR: got %q", sub.CIDR)
+	}
+	if sub.Type != "private" || sub.Zone != "us-east-1a" {
+		t.Fatalf("unexpected subnet: %+v", sub)
+	}
+}
+
+func TestProvisionSubnet_RejectsInvalidInputBeforeRepository(t *testing.T) {
+	t.Parallel()
+	cases := []ProvisionSubnetParams{
+		{NetworkID: "", Type: "private", CIDR: "10.0.0.0/24"},
+		{NetworkID: testNetworkID, Type: "dmz", CIDR: "10.0.0.0/24"},
+		{NetworkID: testNetworkID, Type: "private", CIDR: ""},
+		{NetworkID: testNetworkID, Type: "private", CIDR: "not-a-cidr"},
+		{NetworkID: testNetworkID, Type: "public", CIDR: "2001:db8::/64"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.Type+"_"+tc.CIDR, func(t *testing.T) {
+			t.Parallel()
+			_, err := New(Deps{}).ProvisionSubnet(context.Background(), tc)
+			if err == nil {
+				t.Fatal("expected invalid input error")
+			}
+			var ce *cferrors.CFError
+			if !errors.As(err, &ce) || ce.Code() != cferrors.CodeInvalidInput {
+				t.Fatalf("expected invalid input, got %v", err)
+			}
+		})
+	}
+}
+
+func TestProvisionSubnet_DuplicateCIDRPropagates(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ms := mocks.NewMockSubnetsRepository(ctrl)
+	ms.EXPECT().
+		Create(gomock.Any(), gomock.Any()).
+		Return(subnetsrepo.Subnet{}, subnetsrepo.ErrSubnetCIDRExists)
+
+	_, err := New(Deps{Subnets: ms}).ProvisionSubnet(context.Background(), ProvisionSubnetParams{
+		NetworkID: testNetworkID,
+		Type:      "public",
+		CIDR:      "10.20.0.0/24",
+	})
+	if !errors.Is(err, subnetsrepo.ErrSubnetCIDRExists) {
+		t.Fatalf("expected duplicate CIDR error, got %v", err)
+	}
+}
+
+func TestListSubnets_ReadsRepository(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	ms := mocks.NewMockSubnetsRepository(ctrl)
+	now := time.Now().UTC()
+
+	ms.EXPECT().
+		ListByNetwork(gomock.Any(), testNetworkID).
+		Return([]subnetsrepo.Subnet{{
+			ID:        "bbbbbbbb-1111-4222-8333-cccccccccccc",
+			NetworkID: testNetworkID,
+			Type:      "public",
+			CIDR:      "10.30.0.0/24",
+			CreatedAt: now,
+		}}, nil)
+
+	list, err := New(Deps{Subnets: ms}).ListSubnets(context.Background(), " "+testNetworkID+" ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(list) != 1 || list[0].CIDR != "10.30.0.0/24" || list[0].Type != "public" {
+		t.Fatalf("unexpected subnets: %+v", list)
 	}
 }

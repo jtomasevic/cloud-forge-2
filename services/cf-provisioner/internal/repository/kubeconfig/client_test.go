@@ -35,3 +35,16 @@ func TestStore_NilSecretsClient(t *testing.T) {
 		t.Fatal("expected error")
 	}
 }
+
+func TestRevoke_NotFoundSucceeds(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	m := mock.NewMockSecretsClient(ctrl)
+	m.EXPECT().
+		Delete(gomock.Any(), "secret/tenants/t1/kubeconfig").
+		Return(openbao.ErrSecretNotFound)
+
+	r := New(m)
+	if err := r.Revoke(context.Background(), "t1"); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
+}

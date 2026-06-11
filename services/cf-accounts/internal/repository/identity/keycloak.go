@@ -391,10 +391,10 @@ func (p *KeycloakProvider) passwordTokenStatusError(resp *http.Response) error {
 	var body struct {
 		Error string `json:"error"`
 	}
-	if resp.StatusCode == http.StatusBadRequest && json.Unmarshal(raw, &body) == nil && strings.EqualFold(strings.TrimSpace(body.Error), "invalid_grant") {
+	if json.Unmarshal(raw, &body) == nil && strings.EqualFold(strings.TrimSpace(body.Error), "invalid_grant") {
 		return ErrAuthenticationFailed
 	}
-	if resp.StatusCode == http.StatusBadRequest && strings.Contains(string(raw), "invalid_grant") {
+	if strings.Contains(string(raw), "invalid_grant") {
 		return ErrAuthenticationFailed
 	}
 	msg := strings.TrimSpace(string(raw))
