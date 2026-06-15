@@ -17,6 +17,7 @@ import (
 	"github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/gateway"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/jobs"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/kubeconfig"
+	"github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/subnets"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/vcluster"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/rest"
 	"github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/service"
@@ -84,6 +85,7 @@ func main() {
 		Kubeconfig: kubeconfig.New(secretsClient),
 		CIDR:       cidr.New(session),
 		Jobs:       jobs.New(session),
+		Subnets:    subnets.New(session),
 	})
 
 	h := rest.NewHandler(svc)

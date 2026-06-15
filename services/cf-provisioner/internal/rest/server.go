@@ -1,6 +1,7 @@
 package rest
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -30,10 +31,16 @@ func internalSecretMW(secret string) cfmiddleware.MiddlewareFunc {
 	}
 }
 
+func attachHTTPRequestMiddleware(next generated.StrictHandlerFunc, _ string) generated.StrictHandlerFunc {
+	return func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error) {
+		return next(WithHTTPRequest(ctx, r), w, r, request)
+	}
+}
+
 // NewRouter returns the root HTTP handler: OpenAPI routes, strict typing, then the standard
 // middleware chain and internal-secret auth immediately before the mux.
 func NewRouter(handler *Handler, internalSecret string) http.Handler {
-	strict := generated.NewStrictHandlerWithOptions(handler, nil, generated.StrictHTTPServerOptions{
+	strict := generated.NewStrictHandlerWithOptions(handler, []generated.StrictMiddlewareFunc{attachHTTPRequestMiddleware}, generated.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc:  JSONDecodeError,
 		ResponseErrorHandlerFunc: JSONEncodeError,
 	})

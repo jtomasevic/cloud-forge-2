@@ -10,6 +10,7 @@ use (
 	./services/cf-accounts
 	./services/cf-provisioner
 	./services/cf-router
+	./tests/integration
 	./tools/cf-cli
 	./tools/migrations
 )

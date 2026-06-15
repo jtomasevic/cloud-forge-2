@@ -10,6 +10,7 @@ import (
 	gatewayrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/gateway"
 	jobsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/jobs"
 	kubeconfigrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/kubeconfig"
+	subnetsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/subnets"
 	vclusterrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/vcluster"
 )
 
@@ -37,6 +38,7 @@ type Deps struct {
 	Kubeconfig kubeconfigrepo.KubeconfigRepository
 	CIDR       cidrrepo.CIDRRepository
 	Jobs       jobsrepo.JobsRepository
+	Subnets    subnetsrepo.SubnetsRepository
 }
 
 // New returns a [ProvisionerService] implementation.
@@ -45,6 +47,5 @@ func New(d Deps) ProvisionerService {
 		deps:                d,
 		tenantByNetwork:     make(map[string]string),
 		vclusterNSByNetwork: make(map[string]string),
-		subnetsByNetwork:    make(map[string][]Subnet),
 	}
 }

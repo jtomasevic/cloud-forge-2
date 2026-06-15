@@ -69,7 +69,19 @@ openbao_cli() {
 
 echo "Initializing OpenBao..."
 
-openbao_cli secrets enable -path=secret kv 2>/dev/null || echo "KV secrets engine already enabled"
+secret_mount_version="$(
+	curl -fsS -H "X-Vault-Token: ${OPENBAO_TOKEN}" "${OPENBAO_ADDR}/v1/sys/mounts" |
+		jq -r '.["secret/"].options.version // empty'
+)"
+if [ -z "${secret_mount_version}" ]; then
+	openbao_cli secrets enable -path=secret -version=1 kv
+elif [ "${secret_mount_version}" != "1" ]; then
+	echo "Remounting secret/ as KV v1 for CloudForge dev paths (was KV v${secret_mount_version})"
+	openbao_cli secrets disable secret
+	openbao_cli secrets enable -path=secret -version=1 kv
+else
+	echo "KV v1 secrets engine already enabled"
+fi
 
 openbao_cli policy write cf-provisioner - <<'EOF'
 path "secret/tenants/*" {

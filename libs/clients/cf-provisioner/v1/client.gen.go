@@ -259,13 +259,18 @@ type ProvisionGatewayRequest struct {
 
 // ProvisionNetworkRequest defines model for ProvisionNetworkRequest.
 type ProvisionNetworkRequest struct {
+	// NetworkId Optional network identifier for callers that already created a CloudForge network record. If omitted, CF-Provisioner generates one.
+	NetworkId *openapi_types.UUID `json:"networkId,omitempty"`
+
 	// PodCIDRPrefix Optional CIDR prefix to use. If omitted, auto-allocated from the platform supernet.
 	PodCIDRPrefix *string `json:"podCIDRPrefix,omitempty"`
 	Region        string  `json:"region"`
 
 	// SvcCIDRPrefix Optional service CIDR prefix.
-	SvcCIDRPrefix *string            `json:"svcCIDRPrefix,omitempty"`
-	TenantId      openapi_types.UUID `json:"tenantId"`
+	SvcCIDRPrefix *string `json:"svcCIDRPrefix,omitempty"`
+
+	// TenantId Tenant that owns the network. When requests arrive through CF-Router this is normally supplied by trusted X-CF-Tenant-ID headers, so public callers do not need to send it.
+	TenantId *openapi_types.UUID `json:"tenantId,omitempty"`
 }
 
 // Subnet defines model for Subnet.

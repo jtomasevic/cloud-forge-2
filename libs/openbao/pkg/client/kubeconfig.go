@@ -3,6 +3,7 @@ package client
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 
 	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
@@ -69,6 +70,9 @@ func LoadKubeconfig(ctx context.Context, c SecretsClient, tenantID string) ([]by
 // tenant environment.
 func RevokeKubeconfig(ctx context.Context, c SecretsClient, tenantID string) error {
 	if err := c.Delete(ctx, kubeconfigPath(tenantID)); err != nil {
+		if errors.Is(err, ErrSecretNotFound) {
+			return nil
+		}
 		return cferrors.Wrapf(ErrVaultDelete, "tenant %s kubeconfig: %v", tenantID, err)
 	}
 	return nil

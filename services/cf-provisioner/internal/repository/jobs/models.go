@@ -23,11 +23,13 @@ const (
 
 type CreateJobParams struct {
 	NetworkID string
+	TenantID  string
 	Type      JobType
 }
 
 type Job struct {
 	ID           string
+	TenantID     string
 	NetworkID    string
 	Type         JobType
 	Status       JobStatus

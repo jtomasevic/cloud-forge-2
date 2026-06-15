@@ -22,7 +22,7 @@ platform traffic) or other control-plane components—not end-user browsers.
 | **Kubeconfig** | Writes tenant kubeconfig material to **OpenBao** after vCluster is ready; revokes on deprovision **before** cluster teardown. |
 | **Gateway** | Async attach/detach of `HTTPRoute` for public ingress; status via `GET …/gateway`. |
 | **Jobs** | Durable async state in Scylla (`provisioning_jobs` + by-network index). |
-| **Subnets** | In-memory subnet API in current implementation (see OpenAPI + service). |
+| **Subnets** | Durable private/public subnet metadata in ScyllaDB for app-service placement validation. |
 
 Contract and JSON models: [`api/cf-provisioner/v1/openapi.yaml`](../../api/cf-provisioner/v1/openapi.yaml).
 

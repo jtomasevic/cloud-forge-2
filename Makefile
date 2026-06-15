@@ -37,11 +37,11 @@ MODULES := \
 TILT_PORT ?= 10350
 
 .PHONY: all help build test lint fmt verify codegen tidy work-sync migrate \
-	integration integration-scylladb integration-openbao clean \
+	integration integration-scylladb integration-openbao integration-test clean \
 	dev-up dev-down dev-init dev-reset dev-kill \
 	k3d-up k3d-down k3d-install-deps k3d-kubeconfig \
 	dev dev-start dev-local dev-setup tilt-up tilt-down dev-tools gateway-apply \
-	require-dev-tools require-local-dev-tools require-tilt check-dev-hosts stop-tilt free-tilt-port
+	require-dev-tools require-local-dev-tools require-integration-tools require-tilt check-dev-hosts stop-tilt free-tilt-port
 
 # -----------------------------------------------------------------------------
 # all — Default target: compile every workspace module.
@@ -195,6 +195,11 @@ integration-openbao:
 ## integration: run ScyllaDB and OpenBao integration test suites (needs Docker)
 integration: integration-scylladb integration-openbao
 
+## integration-test: run full local CloudForge flow tests (Docker + k3d + real services)
+integration-test: require-integration-tools
+	$(MAKE) dev-setup
+	CF_INTEGRATION=1 go test -tags=integration -count=1 -v -timeout 30m ./tests/integration/...
+
 # -----------------------------------------------------------------------------
 # clean — Remove known coverage artefacts from libs that write them locally.
 # -----------------------------------------------------------------------------
@@ -219,7 +224,7 @@ k3d-install-deps: k3d-up
 	bash dev/k8s/setup-cloudforge-namespace.sh
 	@echo "All k8s dependencies installed"
 
-## k3d-down: delete k3d cluster cloudforge-dev (idempotent)
+## k3d-down: delete k3d cluster cloudforge-dev and its local registry (idempotent)
 k3d-down:
 	bash dev/k8s/cluster-down.sh
 
@@ -355,6 +360,23 @@ require-local-dev-tools:
 	fi
 	@docker info >/dev/null 2>&1 || { \
 		echo "ERROR: Docker daemon is not reachable. Start Docker, then rerun 'make dev-local'."; \
+		exit 1; \
+	}
+
+require-integration-tools:
+	@missing=0; \
+	for tool in docker k3d kubectl helm vcluster; do \
+		if ! command -v $$tool >/dev/null 2>&1; then \
+			echo "ERROR: $$tool is not installed or is not on PATH."; \
+			missing=1; \
+		fi; \
+	done; \
+	if [ $$missing -ne 0 ]; then \
+		echo "Install missing tools, then rerun 'make integration-test'."; \
+		exit 127; \
+	fi
+	@docker info >/dev/null 2>&1 || { \
+		echo "ERROR: Docker daemon is not reachable. Start Docker, then rerun 'make integration-test'."; \
 		exit 1; \
 	}
 

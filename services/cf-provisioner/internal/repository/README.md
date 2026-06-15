@@ -7,7 +7,7 @@ The layer is **split by dependency type** (see [`docs/plan/13.CFProvisionerInfra
 | Track | Packages | Backing systems |
 |-------|-----------|-----------------|
 | **Infrastructure** (Task 13) | [`vcluster/`](vcluster/), [`cilium/`](cilium/), [`gateway/`](gateway/), [`kubeconfig/`](kubeconfig/) | Host cluster APIs, vCluster CLI, OpenBao |
-| **State** (Task 14) | [`cidr/`](cidr/), [`jobs/`](jobs/) | ScyllaDB (`cidr_allocations`, `provisioning_jobs`, `provisioning_jobs_by_network`) |
+| **State** (Tasks 14, 25) | [`cidr/`](cidr/), [`jobs/`](jobs/), [`subnets/`](subnets/) | ScyllaDB (`cidr_allocations`, `provisioning_jobs`, subnet tables, and indexes) |
 
 ---
 
@@ -32,6 +32,7 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | [`kubeconfig/`](kubeconfig/) | Store, load, and revoke tenant kubeconfigs via `libs/openbao/pkg/client` helpers only (no direct Vault API usage here). |
 | [`cidr/`](cidr/) | Scylla-backed pod/service CIDR allocation (`cidr_allocations`), sequential auto-pool from `10.0.0.0/8` + `172.16.0.0/12`. |
 | [`jobs/`](jobs/) | Async provisioning job rows (`provisioning_jobs` + `provisioning_jobs_by_network` denormalized listing). |
+| [`subnets/`](subnets/) | Durable private/public subnet metadata and indexes for network-scoped listing plus duplicate CIDR detection. |
 
 ### Files per package (convention)
 
@@ -45,7 +46,7 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | `errors.go` | Package **sentinel** `*cferrors.CFError` values for `errors.Is` / wrapping. |
 | `*_test.go` | Unit tests (fakes, `client-go` / `gateway-api` fakes, OpenBao `mock.SecretsClient`, etc.). |
 
-**State packages** (`cidr`, `jobs`) — same style as CF-Accounts repositories:
+**State packages** (`cidr`, `jobs`, `subnets`) — same style as CF-Accounts repositories:
 
 | File | Role |
 |------|------|
@@ -118,6 +119,14 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | `ListByNetwork(ctx, networkID)` | Walk the denormalized partition (newest first), then hydrate each job from the primary table. |
 | `UpdateStatus(ctx, jobID, status, errorMsg)` | Update primary row and **best-effort** denormalized `status` (same eventual-consistency pattern as CF-Accounts `networks_by_tenant`). |
 
+### `subnets` — [`SubnetsRepository`](subnets/api.go)
+
+| Method | Description |
+|--------|-------------|
+| `Create(ctx, params)` | Insert primary + denormalized subnet rows; rejects duplicate canonical CIDR within the network. |
+| `GetByID(ctx, networkID, subnetID)` | Load a subnet by id and verify it belongs to the requested network. |
+| `ListByNetwork(ctx, networkID)` | Read the network-scoped listing index for `GET /v1/networks/{id}/subnets`. |
+
 ---
 
 ## Principles
@@ -141,7 +150,8 @@ go build ./internal/repository/vcluster/ \
           ./internal/repository/gateway/ \
           ./internal/repository/kubeconfig/ \
           ./internal/repository/cidr/ \
-          ./internal/repository/jobs/
+          ./internal/repository/jobs/ \
+          ./internal/repository/subnets/
 ```
 
 ---
@@ -164,6 +174,7 @@ go test ./internal/repository/gateway/ -count=1
 go test ./internal/repository/kubeconfig/ -count=1
 go test ./internal/repository/cidr/ -count=1
 go test ./internal/repository/jobs/ -count=1
+go test ./internal/repository/subnets/ -count=1
 ```
 
 Tests use fakes (`fake` clientsets, `dynamic/fake`, OpenBao `mock.SecretsClient`) and pure allocator tests for **cidr**; they do **not** require a live Kubernetes cluster or OpenBao by default. Scylla-backed repository methods are exercised in unit tests only through **logic helpers** and error mapping; add `//go:build integration` tests with a real session or testcontainers when you want end-to-end CQL coverage.

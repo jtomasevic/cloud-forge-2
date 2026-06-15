@@ -14,13 +14,28 @@ import (
 )
 
 // ToServiceProvisionNetworkParams maps the POST /v1/networks body to service input.
-// A new network UUID is minted here because the API does not accept networkId in the body.
-func ToServiceProvisionNetworkParams(body *generated.ProvisionNetworkJSONRequestBody) (service.ProvisionNetworkParams, error) {
+// A new network UUID is minted when callers do not provide one.
+func ToServiceProvisionNetworkParams(body *generated.ProvisionNetworkJSONRequestBody, trusted TrustedProvisionContext) (service.ProvisionNetworkParams, error) {
 	if body == nil {
 		return service.ProvisionNetworkParams{}, fmt.Errorf("request body is required")
 	}
 	networkID := uuid.NewString()
-	tenantID := body.TenantId.String()
+	if body.NetworkId != nil {
+		networkID = uuid.UUID(*body.NetworkId).String()
+	}
+	tenantID := strings.TrimSpace(trusted.TenantID)
+	if body.TenantId != nil {
+		bodyTenantID := uuid.UUID(*body.TenantId).String()
+		if tenantID != "" && tenantID != bodyTenantID {
+			return service.ProvisionNetworkParams{}, fmt.Errorf("tenantId conflicts with trusted tenant context")
+		}
+		if tenantID == "" {
+			tenantID = bodyTenantID
+		}
+	}
+	if tenantID == "" {
+		return service.ProvisionNetworkParams{}, fmt.Errorf("tenantId is required")
+	}
 	region := strings.TrimSpace(body.Region)
 	if region == "" {
 		return service.ProvisionNetworkParams{}, fmt.Errorf("region is required")

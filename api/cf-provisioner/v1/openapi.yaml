@@ -31,11 +31,21 @@ components:
   schemas:
     ProvisionNetworkRequest:
       type: object
-      required: [tenantId, region]
+      required: [region]
       properties:
+        networkId:
+          type: string
+          format: uuid
+          description: >
+            Optional network identifier for callers that already created a
+            CloudForge network record. If omitted, CF-Provisioner generates one.
         tenantId:
           type: string
           format: uuid
+          description: >
+            Tenant that owns the network. When requests arrive through
+            CF-Router this is normally supplied by trusted X-CF-Tenant-ID
+            headers, so public callers do not need to send it.
         region:
           type: string
         podCIDRPrefix:

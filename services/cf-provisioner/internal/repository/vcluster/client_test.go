@@ -3,6 +3,7 @@ package vcluster
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -20,6 +21,15 @@ type stubExec struct {
 
 func (s stubExec) CombinedOutput(ctx context.Context, name string, arg ...string) ([]byte, error) {
 	return s.out, s.err
+}
+
+type captureExec struct {
+	args []string
+}
+
+func (s *captureExec) CombinedOutput(ctx context.Context, name string, arg ...string) ([]byte, error) {
+	s.args = append([]string(nil), arg...)
+	return nil, nil
 }
 
 func fakeVClusterSTS(name, namespace string) *appsv1.StatefulSet {
@@ -64,6 +74,41 @@ func TestCreate_MapsAlreadyExistsCLI(t *testing.T) {
 	}
 	if !errors.Is(err, ErrVClusterExists) {
 		t.Fatalf("expected ErrVClusterExists, got %v", err)
+	}
+}
+
+func TestCreate_DoesNotPassRemovedCIDRFlags(t *testing.T) {
+	kc := fake.NewSimpleClientset(fakeVClusterSTS("vc1", "ns1"))
+	r := &captureExec{}
+	c := newCfVClusterClientForTest(kc, r)
+	_, err := c.Create(context.Background(), CreateVClusterParams{
+		Name:      "vc1",
+		Namespace: "ns1",
+		PodCIDR:   "10.1.0.0/16",
+		SvcCIDR:   "10.2.0.0/16",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(r.args, " ")
+	if strings.Contains(args, "--pod-cidr") || strings.Contains(args, "--service-cidr") {
+		t.Fatalf("unexpected removed CIDR flags in vcluster args: %s", args)
+	}
+}
+
+func TestDelete_DoesNotPassRemovedForceFlag(t *testing.T) {
+	kc := fake.NewSimpleClientset(fakeVClusterSTS("vc1", "ns1"))
+	r := &captureExec{}
+	c := newCfVClusterClientForTest(kc, r)
+	if err := c.Delete(context.Background(), "vc1"); err != nil {
+		t.Fatal(err)
+	}
+	args := strings.Join(r.args, " ")
+	if strings.Contains(args, "--force") {
+		t.Fatalf("unexpected removed force flag in vcluster args: %s", args)
+	}
+	if !strings.Contains(args, "--ignore-not-found") {
+		t.Fatalf("expected idempotent delete flag in vcluster args: %s", args)
 	}
 }
 

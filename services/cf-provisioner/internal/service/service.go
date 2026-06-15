@@ -5,33 +5,33 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"strings"
 	"sync"
 	"time"
 
 	cferrors "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/errors"
+	cfnetwork "github.com/jtomasevic/cloud-forge-2/libs/cloudforge-core/pkg/network"
 	cidrrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/cidr"
 	ciliumrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/cilium"
 	gatewayrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/gateway"
 	jobsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/jobs"
+	subnetsrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/subnets"
 	vclusterrepo "github.com/jtomasevic/cloud-forge-2/services/cf-provisioner/internal/repository/vcluster"
-
-	"github.com/google/uuid"
 )
 
 // CFProvisionerService implements [ProvisionerService].
 //
-// It owns a small amount of in-process state (tenant and vCluster namespace hints, subnets)
-// that is not persisted in Scylla today; async work always uses a fresh [context.Background]
-// so HTTP request cancellation does not strand half-finished infrastructure.
+// It owns a small amount of in-process state (tenant and vCluster namespace hints) that is not
+// persisted in Scylla today; async work always uses a fresh [context.Background] so HTTP request
+// cancellation does not strand half-finished infrastructure.
 type CFProvisionerService struct {
 	deps Deps
 
 	mu                  sync.RWMutex
 	tenantByNetwork     map[string]string // used for OpenBao paths on kubeconfig revoke (see rememberTenant).
 	vclusterNSByNetwork map[string]string // host namespace observed after vCluster is up; falls back to vclusterName if unknown.
-	subnetsByNetwork    map[string][]Subnet
 }
 
 // --- Naming helpers ---
@@ -137,6 +137,7 @@ func gatewayBackendPort(tls bool) int {
 func toServiceJob(j jobsrepo.Job) Job {
 	return Job{
 		ID:           j.ID,
+		TenantID:     j.TenantID,
 		NetworkID:    j.NetworkID,
 		Type:         string(j.Type),
 		Status:       string(j.Status),
@@ -211,6 +212,7 @@ func (s *CFProvisionerService) ProvisionNetwork(ctx context.Context, params Prov
 
 	job, err := s.deps.Jobs.Create(ctx, jobsrepo.CreateJobParams{
 		NetworkID: networkID,
+		TenantID:  tenantID,
 		Type:      jobsrepo.JobTypeProvisionNetwork,
 	})
 	if err != nil {
@@ -384,6 +386,9 @@ func (s *CFProvisionerService) GetNetworkStatus(ctx context.Context, networkID s
 	}
 
 	tenant := s.tenantID(networkID)
+	if tenant == "" {
+		tenant = latestTenantIDFromJobs(jobsList)
+	}
 	vc := vclusterName(networkID)
 	ns := NetworkStatus{
 		NetworkID:     networkID,
@@ -460,6 +465,22 @@ func inferNetworkStatusFromJobs(jobsList []jobsrepo.Job, cidrMissing bool) (Netw
 	return NetworkStatusActive, "", pick.UpdatedAt
 }
 
+func latestTenantIDFromJobs(jobsList []jobsrepo.Job) string {
+	pickIdx := -1
+	for i := range jobsList {
+		if strings.TrimSpace(jobsList[i].TenantID) == "" {
+			continue
+		}
+		if pickIdx < 0 || jobsList[i].CreatedAt.After(jobsList[pickIdx].CreatedAt) {
+			pickIdx = i
+		}
+	}
+	if pickIdx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(jobsList[pickIdx].TenantID)
+}
+
 // DeprovisionNetwork validates the allocation still exists, enqueues async teardown, and returns the job.
 // Sync path only checks CIDR.Get so we never enqueue teardown for unknown networks; tenantID is read
 // once and passed into the goroutine snapshot (maps can change later, but deprovision is tied to this call).
@@ -476,8 +497,18 @@ func (s *CFProvisionerService) DeprovisionNetwork(ctx context.Context, networkID
 		return Job{}, err
 	}
 
+	tenant := s.tenantID(networkID)
+	if tenant == "" {
+		jobsList, err := s.deps.Jobs.ListByNetwork(ctx, networkID)
+		if err != nil {
+			return Job{}, err
+		}
+		tenant = latestTenantIDFromJobs(jobsList)
+	}
+
 	job, err := s.deps.Jobs.Create(ctx, jobsrepo.CreateJobParams{
 		NetworkID: networkID,
+		TenantID:  tenant,
 		Type:      jobsrepo.JobTypeDeprovisionNetwork,
 	})
 	if err != nil {
@@ -485,7 +516,6 @@ func (s *CFProvisionerService) DeprovisionNetwork(ctx context.Context, networkID
 	}
 
 	vcName := vclusterName(networkID)
-	tenant := s.tenantID(networkID)
 	go s.runDeprovisionNetwork(context.Background(), job.ID, networkID, tenant, vcName)
 
 	return toServiceJob(job), nil
@@ -756,49 +786,75 @@ func slicePage[T any](items []T, offset, limit int) []T {
 	return out
 }
 
-// ProvisionSubnet is an in-memory placeholder until Task 14+ persists subnets in Scylla.
-// ctx is reserved for a future auth/tenant check when the REST layer lands.
 func (s *CFProvisionerService) ProvisionSubnet(ctx context.Context, params ProvisionSubnetParams) (Subnet, error) {
-	_ = ctx
 	networkID := strings.TrimSpace(params.NetworkID)
 	if networkID == "" {
 		return Subnet{}, cferrors.Wrap(cferrors.CodeInvalidInput, "networkID is required", cferrors.ErrInvalidInput)
 	}
 	typ := strings.ToLower(strings.TrimSpace(params.Type))
-	if typ != "private" && typ != "public" {
+	if typ != string(cfnetwork.SubnetTypePrivate) && typ != string(cfnetwork.SubnetTypePublic) {
 		return Subnet{}, cferrors.Wrap(cferrors.CodeInvalidInput, "type must be private or public", cferrors.ErrInvalidInput)
 	}
-	if strings.TrimSpace(params.CIDR) == "" {
-		return Subnet{}, cferrors.Wrap(cferrors.CodeInvalidInput, "cidr is required", cferrors.ErrInvalidInput)
+	cidr, err := normalizeSubnetCIDR(params.CIDR)
+	if err != nil {
+		return Subnet{}, err
 	}
-
-	sub := Subnet{
-		ID:        uuid.NewString(),
+	if s.deps.Subnets == nil {
+		return Subnet{}, cferrors.Wrap(cferrors.CodeInternal, "subnets repository is required", cferrors.ErrInternal)
+	}
+	sub, err := s.deps.Subnets.Create(ctx, subnetsrepo.CreateSubnetParams{
 		NetworkID: networkID,
 		Type:      typ,
-		CIDR:      strings.TrimSpace(params.CIDR),
+		CIDR:      cidr,
 		Zone:      strings.TrimSpace(params.Zone),
-		CreatedAt: time.Now().UTC(),
+	})
+	if err != nil {
+		return Subnet{}, err
 	}
-
-	s.mu.Lock()
-	s.subnetsByNetwork[networkID] = append(s.subnetsByNetwork[networkID], sub)
-	s.mu.Unlock()
-
-	return sub, nil
+	return toServiceSubnet(sub), nil
 }
 
-// ListSubnets returns a shallow copy so callers cannot mutate internal slices under the service lock.
+func normalizeSubnetCIDR(cidr string) (string, error) {
+	cidr = strings.TrimSpace(cidr)
+	if cidr == "" {
+		return "", cferrors.Wrap(cferrors.CodeInvalidInput, "cidr is required", cferrors.ErrInvalidInput)
+	}
+	_, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return "", cferrors.Wrap(cferrors.CodeInvalidInput, "invalid CIDR", cferrors.ErrInvalidInput)
+	}
+	if ipnet.IP.To4() == nil {
+		return "", cferrors.Wrap(cferrors.CodeInvalidInput, "IPv6 CIDR not supported", cferrors.ErrInvalidInput)
+	}
+	return ipnet.String(), nil
+}
+
 func (s *CFProvisionerService) ListSubnets(ctx context.Context, networkID string) ([]Subnet, error) {
-	_ = ctx
 	networkID = strings.TrimSpace(networkID)
 	if networkID == "" {
 		return nil, cferrors.Wrap(cferrors.CodeInvalidInput, "networkID is required", cferrors.ErrInvalidInput)
 	}
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	list := s.subnetsByNetwork[networkID]
-	out := make([]Subnet, len(list))
-	copy(out, list)
+	if s.deps.Subnets == nil {
+		return nil, cferrors.Wrap(cferrors.CodeInternal, "subnets repository is required", cferrors.ErrInternal)
+	}
+	list, err := s.deps.Subnets.ListByNetwork(ctx, networkID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]Subnet, 0, len(list))
+	for _, sub := range list {
+		out = append(out, toServiceSubnet(sub))
+	}
 	return out, nil
+}
+
+func toServiceSubnet(sub subnetsrepo.Subnet) Subnet {
+	return Subnet{
+		ID:        sub.ID,
+		NetworkID: sub.NetworkID,
+		Type:      sub.Type,
+		CIDR:      sub.CIDR,
+		Zone:      sub.Zone,
+		CreatedAt: sub.CreatedAt,
+	}
 }

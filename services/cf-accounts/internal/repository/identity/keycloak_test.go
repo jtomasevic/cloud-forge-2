@@ -210,29 +210,33 @@ func TestKeycloakProviderAuthenticatePasswordSuccess(t *testing.T) {
 }
 
 func TestKeycloakProviderAuthenticatePasswordInvalidGrant(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusBadRequest)
-		_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
-	}))
-	defer server.Close()
+	for _, status := range []int{http.StatusBadRequest, http.StatusUnauthorized} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(`{"error":"invalid_grant"}`))
+			}))
+			defer server.Close()
 
-	provider, err := NewKeycloakProvider(KeycloakConfig{
-		BaseURL:    server.URL,
-		Realm:      "cloudforge",
-		AdminUser:  "admin",
-		AdminPass:  "admin",
-		HTTPClient: server.Client(),
-	})
-	if err != nil {
-		t.Fatalf("NewKeycloakProvider: %v", err)
-	}
+			provider, err := NewKeycloakProvider(KeycloakConfig{
+				BaseURL:    server.URL,
+				Realm:      "cloudforge",
+				AdminUser:  "admin",
+				AdminPass:  "admin",
+				HTTPClient: server.Client(),
+			})
+			if err != nil {
+				t.Fatalf("NewKeycloakProvider: %v", err)
+			}
 
-	_, err = provider.AuthenticatePassword(context.Background(), AuthenticatePasswordParams{
-		Email:    "new@example.com",
-		Password: "wrong-password",
-	})
-	if !errors.Is(err, ErrAuthenticationFailed) {
-		t.Fatalf("expected ErrAuthenticationFailed, got %v", err)
+			_, err = provider.AuthenticatePassword(context.Background(), AuthenticatePasswordParams{
+				Email:    "new@example.com",
+				Password: "wrong-password",
+			})
+			if !errors.Is(err, ErrAuthenticationFailed) {
+				t.Fatalf("expected ErrAuthenticationFailed, got %v", err)
+			}
+		})
 	}
 }
 

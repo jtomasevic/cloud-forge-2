@@ -23,8 +23,8 @@ import "time"
 //     provision_gateway [Job], then HTTPRoute + Cilium ingress policy. [GatewayStatus] reads the
 //     HTTPRoute; it is keyed by the same NetworkID as the network (one route name derived from ID).
 //
-//   - [Subnet] is optional overlay data today: stored in-process only until a subnet table exists.
-//     It still hangs off NetworkID like everything else.
+//   - [Subnet] is optional overlay data used by app-service placement. It is persisted in ScyllaDB
+//     and hangs off NetworkID like everything else.
 //
 // TenantID appears on inputs and on [NetworkStatus] for kubeconfig correlation; it is not on the CIDR
 // allocation row, so the service keeps a small in-memory networkID→tenant map after provision starts.
@@ -51,8 +51,8 @@ type ProvisionGatewayParams struct {
 	TLSEnabled    bool
 }
 
-// ProvisionSubnetParams is the input for the in-memory subnet registry (no persistence yet).
-// Type is "private" or "public". CIDR and Zone are opaque to the service beyond validation.
+// ProvisionSubnetParams is the input for durable subnet creation.
+// Type is "private" or "public". CIDR is parsed and stored canonically; Zone is optional metadata.
 type ProvisionSubnetParams struct {
 	NetworkID string
 	Type      string // "private" or "public"
@@ -123,6 +123,7 @@ type GatewayStatus struct {
 // uses typed constants internally. ErrorMessage is set when Status indicates failure.
 type Job struct {
 	ID           string
+	TenantID     string
 	NetworkID    string
 	Type         string
 	Status       string
@@ -131,9 +132,9 @@ type Job struct {
 	UpdatedAt    time.Time
 }
 
-// Subnet is a logical slice inside a network (L3 segmentation / AZ placement).
-// Today it exists only in the service process; NetworkID groups subnets with the same network as
-// [NetworkStatus] and [Job]. ID is a new UUID per ProvisionSubnet call.
+// Subnet is a durable logical slice inside a network (L3 segmentation / AZ placement).
+// NetworkID groups subnets with the same network as [NetworkStatus] and [Job]. ID is a stable UUID
+// minted by the subnet repository.
 type Subnet struct {
 	ID        string
 	NetworkID string
