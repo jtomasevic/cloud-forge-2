@@ -7,7 +7,7 @@ The layer is **split by dependency type** (see [`docs/plan/13.CFProvisionerInfra
 | Track | Packages | Backing systems |
 |-------|-----------|-----------------|
 | **Infrastructure** (Task 13) | [`vcluster/`](vcluster/), [`cilium/`](cilium/), [`gateway/`](gateway/), [`kubeconfig/`](kubeconfig/) | Host cluster APIs, vCluster CLI, OpenBao |
-| **State** (Tasks 14, 25, 28) | [`cidr/`](cidr/), [`jobs/`](jobs/), [`subnets/`](subnets/), future `appservices/` | ScyllaDB (`cidr_allocations`, `provisioning_jobs`, subnet tables, app-service tables, and indexes) |
+| **State** (Tasks 14, 25, 28, 29) | [`cidr/`](cidr/), [`jobs/`](jobs/), [`subnets/`](subnets/), [`appservices/`](appservices/) | ScyllaDB (`cidr_allocations`, `provisioning_jobs`, subnet tables, app-service tables, and indexes) |
 
 ---
 
@@ -33,6 +33,7 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | [`cidr/`](cidr/) | Scylla-backed pod/service CIDR allocation (`cidr_allocations`), sequential auto-pool from `10.0.0.0/8` + `172.16.0.0/12`. |
 | [`jobs/`](jobs/) | Async provisioning job rows (`provisioning_jobs` + `provisioning_jobs_by_network` denormalized listing), including app-service lifecycle job types. |
 | [`subnets/`](subnets/) | Durable private/public subnet metadata and indexes for network-scoped listing plus duplicate CIDR detection. |
+| [`appservices/`](appservices/) | Durable app-service workload intent, runtime JSON fragments, exposure metadata, and network-scoped listing. |
 
 ### Files per package (convention)
 
@@ -46,7 +47,7 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | `errors.go` | Package **sentinel** `*cferrors.CFError` values for `errors.Is` / wrapping. |
 | `*_test.go` | Unit tests (fakes, `client-go` / `gateway-api` fakes, OpenBao `mock.SecretsClient`, etc.). |
 
-**State packages** (`cidr`, `jobs`, `subnets`) — same style as CF-Accounts repositories:
+**State packages** (`cidr`, `jobs`, `subnets`, `appservices`) — same style as CF-Accounts repositories:
 
 | File | Role |
 |------|------|
@@ -127,16 +128,17 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | `GetByID(ctx, networkID, subnetID)` | Load a subnet by id and verify it belongs to the requested network. |
 | `ListByNetwork(ctx, networkID)` | Read the network-scoped listing index for `GET /v1/networks/{id}/subnets`. |
 
-### CF App Service state — migration-only until Task 29
+### `appservices` — [`AppServicesRepository`](appservices/api.go)
 
-Task 28 adds Scylla tables for app-service desired state before the repository package exists:
-
-| Table | Purpose |
-|-------|---------|
-| `app_services` | Primary durable workload record with tenant/network/subnet placement, runtime resources, JSON-encoded environment/port/exposure/Swagger fragments, and timestamps. |
-| `app_services_by_network` | Denormalized listing row for `GET /v1/networks/{networkId}/app-services`. |
-| `app_service_exposures_by_host` | Public-host lookup for internet-gateway exposure and Swagger/OpenAPI metadata. |
-| `app_service_jobs_by_app_service` | App-service lifecycle job correlation while `provisioning_jobs` remains the generic polling table. |
+| Method | Description |
+|--------|-------------|
+| `Create(ctx, params)` | Insert primary desired-state row plus network-listing row; reserve public host when initial exposure is present. |
+| `Get(ctx, appServiceID)` | Load and JSON-decode one app-service row by id. |
+| `ListByNetwork(ctx, networkID)` | Read network-listing ids and hydrate authoritative primary rows. |
+| `UpdateStatus(ctx, params)` | Update primary lifecycle status and denormalized list status. |
+| `UpdateExposure(ctx, params)` | Update primary exposure JSON, list summary, and public-host lookup row. |
+| `MarkDeleted(ctx, appServiceID)` | Set repository tombstone status for cleanup flows before physical deletion. |
+| `Delete(ctx, appServiceID)` | Remove public host row, network listing row, and primary row after infrastructure cleanup. |
 
 ---
 
