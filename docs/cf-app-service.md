@@ -442,18 +442,21 @@ spec:
 
 ### 7.4 Minimal REST API Shape
 
-If this is exposed first as a CloudForge REST API rather than a Kubernetes CRD, the equivalent endpoint shape could be:
+CF App Service is exposed first as a CF-Provisioner REST contract. The OpenAPI source of truth is
+`api/cf-provisioner/v1/openapi.yaml`, with this endpoint shape:
 
 | Method | Path | Purpose |
 |---|---|---|
 | `POST` | `/v1/networks/{networkId}/app-services` | Create app service in a private network |
 | `GET` | `/v1/networks/{networkId}/app-services` | List app services for a network |
-| `GET` | `/v1/app-services/{serviceId}` | Get app service status |
-| `DELETE` | `/v1/app-services/{serviceId}` | Delete app service |
-| `POST` | `/v1/app-services/{serviceId}/exposure` | Expose through internet gateway |
-| `DELETE` | `/v1/app-services/{serviceId}/exposure` | Remove public exposure |
+| `GET` | `/v1/app-services/{appServiceId}` | Get app service status |
+| `DELETE` | `/v1/app-services/{appServiceId}` | Delete app service |
+| `POST` | `/v1/app-services/{appServiceId}/exposure` | Expose through internet gateway |
+| `DELETE` | `/v1/app-services/{appServiceId}/exposure` | Remove public exposure |
 
-The REST API should still map to the same domain model as the YAML example.
+The REST API maps to the same domain model as the YAML example. Public exposure remains a separate
+operation from public subnet placement, and exposed services must declare public documentation
+metadata, including a Swagger UI path and OpenAPI document path.
 
 ---
 

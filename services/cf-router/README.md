@@ -15,7 +15,7 @@ and operator introspection.
 
 | Area | Behavior |
 |------|-----------|
-| **Reverse proxy** | Paths under `/v1/auth`, `/v1/accounts`, `/v1/tenants` → **CF-Accounts**; `/v1/networks`, `/v1/gateways`, `/v1/jobs` → **CF-Provisioner** (see [`internal/rest/proxy.go`](internal/rest/proxy.go) `DefaultRouteTable`). |
+| **Reverse proxy** | Paths under `/v1/auth`, `/v1/accounts`, `/v1/tenants` → **CF-Accounts**; `/v1/networks`, `/v1/app-services`, `/v1/gateways`, `/v1/jobs` → **CF-Provisioner** (see [`internal/rest/proxy.go`](internal/rest/proxy.go) `DefaultRouteTable`). |
 | **Authentication** | **JWT**: RS256 verify using **JWKS** from `KEYCLOAK_JWKS_URL` (no third-party JWT lib). **API key**: BLAKE2b-256 hash → Scylla **`api_keys_by_hash`**. |
 | **Tenant resolution** | Calls CF-Accounts **`GET /internal/v1/resolve`** with **`X-CF-Internal-Secret`** (`CF_INTERNAL_SECRET`). |
 | **Header injection** | Sets `X-CF-Tenant-ID`, `X-CF-Account-ID`, `X-CF-Network-ID`, `X-CF-Region`, `X-CF-Internal-Secret` on upstream requests. **Strips** `X-CF-API-Key` so raw keys never reach CF services. |

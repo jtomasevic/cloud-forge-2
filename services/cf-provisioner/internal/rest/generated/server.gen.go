@@ -28,6 +28,99 @@ const (
 	InternalSecretScopes internalSecretContextKey = "InternalSecret.Scopes"
 )
 
+// Defines values for AppServiceExposureType.
+const (
+	InternetGateway AppServiceExposureType = "InternetGateway"
+)
+
+// Valid indicates whether the value is a known member of the AppServiceExposureType enum.
+func (e AppServiceExposureType) Valid() bool {
+	switch e {
+	case InternetGateway:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AppServicePortProtocol.
+const (
+	GRPC AppServicePortProtocol = "GRPC"
+	HTTP AppServicePortProtocol = "HTTP"
+	TCP  AppServicePortProtocol = "TCP"
+)
+
+// Valid indicates whether the value is a known member of the AppServicePortProtocol enum.
+func (e AppServicePortProtocol) Valid() bool {
+	switch e {
+	case GRPC:
+		return true
+	case HTTP:
+		return true
+	case TCP:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AppServiceRuntimeServiceType.
+const (
+	Container AppServiceRuntimeServiceType = "container"
+	Grpc      AppServiceRuntimeServiceType = "grpc"
+	Rest      AppServiceRuntimeServiceType = "rest"
+	Tcp       AppServiceRuntimeServiceType = "tcp"
+	Ui        AppServiceRuntimeServiceType = "ui"
+	Worker    AppServiceRuntimeServiceType = "worker"
+)
+
+// Valid indicates whether the value is a known member of the AppServiceRuntimeServiceType enum.
+func (e AppServiceRuntimeServiceType) Valid() bool {
+	switch e {
+	case Container:
+		return true
+	case Grpc:
+		return true
+	case Rest:
+		return true
+	case Tcp:
+		return true
+	case Ui:
+		return true
+	case Worker:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AppServiceStatusPhase.
+const (
+	AppServiceStatusPhaseCreating AppServiceStatusPhase = "creating"
+	AppServiceStatusPhaseDeleting AppServiceStatusPhase = "deleting"
+	AppServiceStatusPhaseFailed   AppServiceStatusPhase = "failed"
+	AppServiceStatusPhaseRunning  AppServiceStatusPhase = "running"
+	AppServiceStatusPhaseUpdating AppServiceStatusPhase = "updating"
+)
+
+// Valid indicates whether the value is a known member of the AppServiceStatusPhase enum.
+func (e AppServiceStatusPhase) Valid() bool {
+	switch e {
+	case AppServiceStatusPhaseCreating:
+		return true
+	case AppServiceStatusPhaseDeleting:
+		return true
+	case AppServiceStatusPhaseFailed:
+		return true
+	case AppServiceStatusPhaseRunning:
+		return true
+	case AppServiceStatusPhaseUpdating:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateSubnetRequestType.
 const (
 	CreateSubnetRequestTypePrivate CreateSubnetRequestType = "private"
@@ -99,23 +192,35 @@ func (e JobStatus) Valid() bool {
 
 // Defines values for JobType.
 const (
-	DeprovisionNetwork JobType = "deprovision_network"
-	ProvisionGateway   JobType = "provision_gateway"
-	ProvisionNetwork   JobType = "provision_network"
-	ProvisionSubnet    JobType = "provision_subnet"
-	RemoveGateway      JobType = "remove_gateway"
+	CreateAppService         JobType = "create_app_service"
+	DeleteAppService         JobType = "delete_app_service"
+	DeprovisionNetwork       JobType = "deprovision_network"
+	ExposeAppService         JobType = "expose_app_service"
+	ProvisionGateway         JobType = "provision_gateway"
+	ProvisionNetwork         JobType = "provision_network"
+	ProvisionSubnet          JobType = "provision_subnet"
+	RemoveAppServiceExposure JobType = "remove_app_service_exposure"
+	RemoveGateway            JobType = "remove_gateway"
 )
 
 // Valid indicates whether the value is a known member of the JobType enum.
 func (e JobType) Valid() bool {
 	switch e {
+	case CreateAppService:
+		return true
+	case DeleteAppService:
+		return true
 	case DeprovisionNetwork:
+		return true
+	case ExposeAppService:
 		return true
 	case ProvisionGateway:
 		return true
 	case ProvisionNetwork:
 		return true
 	case ProvisionSubnet:
+		return true
+	case RemoveAppServiceExposure:
 		return true
 	case RemoveGateway:
 		return true
@@ -126,25 +231,25 @@ func (e JobType) Valid() bool {
 
 // Defines values for NetworkProvisioningStatusStatus.
 const (
-	Active         NetworkProvisioningStatusStatus = "active"
-	Deprovisioned  NetworkProvisioningStatusStatus = "deprovisioned"
-	Deprovisioning NetworkProvisioningStatusStatus = "deprovisioning"
-	Failed         NetworkProvisioningStatusStatus = "failed"
-	Provisioning   NetworkProvisioningStatusStatus = "provisioning"
+	NetworkProvisioningStatusStatusActive         NetworkProvisioningStatusStatus = "active"
+	NetworkProvisioningStatusStatusDeprovisioned  NetworkProvisioningStatusStatus = "deprovisioned"
+	NetworkProvisioningStatusStatusDeprovisioning NetworkProvisioningStatusStatus = "deprovisioning"
+	NetworkProvisioningStatusStatusFailed         NetworkProvisioningStatusStatus = "failed"
+	NetworkProvisioningStatusStatusProvisioning   NetworkProvisioningStatusStatus = "provisioning"
 )
 
 // Valid indicates whether the value is a known member of the NetworkProvisioningStatusStatus enum.
 func (e NetworkProvisioningStatusStatus) Valid() bool {
 	switch e {
-	case Active:
+	case NetworkProvisioningStatusStatusActive:
 		return true
-	case Deprovisioned:
+	case NetworkProvisioningStatusStatusDeprovisioned:
 		return true
-	case Deprovisioning:
+	case NetworkProvisioningStatusStatusDeprovisioning:
 		return true
-	case Failed:
+	case NetworkProvisioningStatusStatusFailed:
 		return true
-	case Provisioning:
+	case NetworkProvisioningStatusStatusProvisioning:
 		return true
 	default:
 		return false
@@ -169,6 +274,163 @@ func (e SubnetType) Valid() bool {
 	}
 }
 
+// AppService defines model for AppService.
+type AppService struct {
+	CreatedAt time.Time           `json:"createdAt"`
+	Exposure  *AppServiceExposure `json:"exposure,omitempty"`
+	Id        openapi_types.UUID  `json:"id"`
+	Name      string              `json:"name"`
+	NetworkId openapi_types.UUID  `json:"networkId"`
+
+	// Runtime Runtime declaration for a CloudForge app service. The MVP supports immutable image references and local-development Docker builds; exactly one of `image` or `build` must be supplied by callers. Production callers should prefer immutable registry image tags or digests.
+	Runtime AppServiceRuntime `json:"runtime"`
+	Status  AppServiceStatus  `json:"status"`
+
+	// SubnetId Subnet where the app service is placed. The subnet must exist, must belong to `networkId`, and its public/private type controls whether internet gateway exposure can be requested.
+	SubnetId  openapi_types.UUID `json:"subnetId"`
+	UpdatedAt *time.Time         `json:"updatedAt,omitempty"`
+}
+
+// AppServiceBuild Local-development Docker build metadata. Production control-plane callers should pass a registry `image` instead of arbitrary build context until a secure build service exists.
+type AppServiceBuild struct {
+	// Args Optional Docker build arguments.
+	Args *map[string]string `json:"args,omitempty"`
+
+	// Context Build context path or source reference understood by the caller/build adapter.
+	Context string `json:"context"`
+
+	// Dockerfile Dockerfile path relative to `context`.
+	Dockerfile string `json:"dockerfile"`
+
+	// Target Optional Docker build target stage.
+	Target *string `json:"target,omitempty"`
+}
+
+// AppServiceEnvVar defines model for AppServiceEnvVar.
+type AppServiceEnvVar struct {
+	Name string `json:"name"`
+
+	// SecretRef Optional secret reference resolved by a future secret adapter.
+	SecretRef *string `json:"secretRef,omitempty"`
+
+	// Value Plaintext value. Use `secretRef` for values that must not be stored inline.
+	Value *string `json:"value,omitempty"`
+}
+
+// AppServiceExposure Explicit internet gateway exposure request. Public subnet placement only makes an app service eligible for public routing; it does not create a public route by itself. Private subnet app services must be rejected when this exposure is requested. `portRef` must reference one of the declared runtime ports, the network must have an active internet gateway, and public documentation metadata is mandatory.
+type AppServiceExposure struct {
+	// Host Public hostname to route through the internet gateway.
+	Host string `json:"host"`
+
+	// PortRef Runtime port name to expose. Must match `runtime.ports[].name`.
+	PortRef string `json:"portRef"`
+
+	// Swagger Public documentation metadata required for every app service exposed through an internet gateway. HTTP/REST services must provide either a reachable OpenAPI document URL or an inline OpenAPI document. If a protocol cannot provide an OpenAPI-compatible document yet, internet gateway exposure must be rejected until a protocol-specific documentation adapter exists.
+	Swagger    AppServiceSwagger      `json:"swagger"`
+	TlsEnabled *bool                  `json:"tlsEnabled,omitempty"`
+	Type       AppServiceExposureType `json:"type"`
+}
+
+// AppServiceExposureType defines model for AppServiceExposure.Type.
+type AppServiceExposureType string
+
+// AppServiceList defines model for AppServiceList.
+type AppServiceList struct {
+	Items []AppService `json:"items"`
+}
+
+// AppServicePort defines model for AppServicePort.
+type AppServicePort struct {
+	ContainerPort int `json:"containerPort"`
+
+	// Name Stable port name used by exposure `portRef`.
+	Name string `json:"name"`
+
+	// Protocol MVP public routing supports HTTP through Gateway API HTTPRoute. GRPC and TCP exposure must be rejected until a compatible route and documentation adapter exist.
+	Protocol AppServicePortProtocol `json:"protocol"`
+}
+
+// AppServicePortProtocol MVP public routing supports HTTP through Gateway API HTTPRoute. GRPC and TCP exposure must be rejected until a compatible route and documentation adapter exist.
+type AppServicePortProtocol string
+
+// AppServiceResources Required resource limits for multi-tenant safety. If a later platform plan allows omitted values, CF-Provisioner must fill explicit defaults before creating Kubernetes workloads.
+type AppServiceResources struct {
+	// Cpu CPU request/limit such as `250m`, `500m`, or `1`.
+	Cpu string `json:"cpu"`
+
+	// Memory Memory request/limit such as `256Mi`, `512Mi`, or `1Gi`.
+	Memory string `json:"memory"`
+}
+
+// AppServiceRuntime Runtime declaration for a CloudForge app service. The MVP supports immutable image references and local-development Docker builds; exactly one of `image` or `build` must be supplied by callers. Production callers should prefer immutable registry image tags or digests.
+type AppServiceRuntime struct {
+	// Args Optional container command arguments.
+	Args *[]string `json:"args,omitempty"`
+
+	// Build Local-development Docker build metadata. Production control-plane callers should pass a registry `image` instead of arbitrary build context until a secure build service exists.
+	Build *AppServiceBuild `json:"build,omitempty"`
+
+	// Command Optional container entrypoint override.
+	Command *[]string           `json:"command,omitempty"`
+	Env     *[]AppServiceEnvVar `json:"env,omitempty"`
+
+	// Image Container image reference to deploy. Production usage should pass an immutable tag or digest. Either `image` or `build` is required.
+	Image *string           `json:"image,omitempty"`
+	Ports *[]AppServicePort `json:"ports,omitempty"`
+
+	// Replicas Desired replica count. The MVP may cap this to one.
+	Replicas *int `json:"replicas,omitempty"`
+
+	// Resources Required resource limits for multi-tenant safety. If a later platform plan allows omitted values, CF-Provisioner must fill explicit defaults before creating Kubernetes workloads.
+	Resources AppServiceResources `json:"resources"`
+
+	// ServiceType Workload shape. `rest`, `grpc`, `ui`, and `tcp` services can declare ports. `worker` services may declare no ports and cannot be exposed through an internet gateway.
+	ServiceType AppServiceRuntimeServiceType `json:"serviceType"`
+}
+
+// AppServiceRuntimeServiceType Workload shape. `rest`, `grpc`, `ui`, and `tcp` services can declare ports. `worker` services may declare no ports and cannot be exposed through an internet gateway.
+type AppServiceRuntimeServiceType string
+
+// AppServiceStatus defines model for AppServiceStatus.
+type AppServiceStatus struct {
+	DesiredReplicas *int    `json:"desiredReplicas,omitempty"`
+	FailureReason   *string `json:"failureReason,omitempty"`
+
+	// InternalDNSName DNS name reachable inside the tenant private network.
+	InternalDNSName *string               `json:"internalDNSName,omitempty"`
+	Phase           AppServiceStatusPhase `json:"phase"`
+
+	// PublicEndpoint Public URL when internet gateway exposure is active.
+	PublicEndpoint *string    `json:"publicEndpoint,omitempty"`
+	ReadyReplicas  *int       `json:"readyReplicas,omitempty"`
+	UpdatedAt      *time.Time `json:"updatedAt,omitempty"`
+}
+
+// AppServiceStatusPhase defines model for AppServiceStatus.Phase.
+type AppServiceStatusPhase string
+
+// AppServiceSwagger Public documentation metadata required for every app service exposed through an internet gateway. HTTP/REST services must provide either a reachable OpenAPI document URL or an inline OpenAPI document. If a protocol cannot provide an OpenAPI-compatible document yet, internet gateway exposure must be rejected until a protocol-specific documentation adapter exists.
+type AppServiceSwagger struct {
+	// InlineSpec Inline OpenAPI document object.
+	InlineSpec *map[string]interface{} `json:"inlineSpec,omitempty"`
+
+	// OpenapiPath Public OpenAPI JSON path routed for the exposed service.
+	OpenapiPath string `json:"openapiPath"`
+
+	// PublicPath Public Swagger UI path routed for the exposed service.
+	PublicPath string `json:"publicPath"`
+
+	// SpecUrl URL where CF can fetch the service OpenAPI document.
+	SpecUrl *string `json:"specUrl,omitempty"`
+	union   json.RawMessage
+}
+
+// AppServiceSwagger0 defines model for .
+type AppServiceSwagger0 = interface{}
+
+// AppServiceSwagger1 defines model for .
+type AppServiceSwagger1 = interface{}
+
 // CIDRAllocation defines model for CIDRAllocation.
 type CIDRAllocation struct {
 	AllocatedAt time.Time          `json:"allocatedAt"`
@@ -180,6 +442,17 @@ type CIDRAllocation struct {
 // CIDRAllocationList defines model for CIDRAllocationList.
 type CIDRAllocationList struct {
 	Items []CIDRAllocation `json:"items"`
+}
+
+// CreateAppServiceRequest Creates an app service in an active private network. CF-Provisioner must validate that the network is active, that `subnetId` exists and belongs to the path `networkId`, that resource limits are present, and that any requested internet gateway exposure targets a declared runtime port and a public subnet. Public subnet placement alone never creates public exposure.
+type CreateAppServiceRequest struct {
+	// Exposure Explicit internet gateway exposure request. Public subnet placement only makes an app service eligible for public routing; it does not create a public route by itself. Private subnet app services must be rejected when this exposure is requested. `portRef` must reference one of the declared runtime ports, the network must have an active internet gateway, and public documentation metadata is mandatory.
+	Exposure *AppServiceExposure `json:"exposure,omitempty"`
+	Name     string              `json:"name"`
+
+	// Runtime Runtime declaration for a CloudForge app service. The MVP supports immutable image references and local-development Docker builds; exactly one of `image` or `build` must be supplied by callers. Production callers should prefer immutable registry image tags or digests.
+	Runtime  AppServiceRuntime  `json:"runtime"`
+	SubnetId openapi_types.UUID `json:"subnetId"`
 }
 
 // CreateSubnetRequest defines model for CreateSubnetRequest.
@@ -220,13 +493,15 @@ type GatewayStatusStatus string
 
 // Job defines model for Job.
 type Job struct {
-	CreatedAt    time.Time          `json:"createdAt"`
-	ErrorMessage *string            `json:"errorMessage,omitempty"`
-	Id           openapi_types.UUID `json:"id"`
-	NetworkId    openapi_types.UUID `json:"networkId"`
-	Status       JobStatus          `json:"status"`
-	Type         JobType            `json:"type"`
-	UpdatedAt    *time.Time         `json:"updatedAt,omitempty"`
+	// AppServiceId App service affected by this job, when the job type is app-service related.
+	AppServiceId *openapi_types.UUID `json:"appServiceId,omitempty"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	ErrorMessage *string             `json:"errorMessage,omitempty"`
+	Id           openapi_types.UUID  `json:"id"`
+	NetworkId    openapi_types.UUID  `json:"networkId"`
+	Status       JobStatus           `json:"status"`
+	Type         JobType             `json:"type"`
+	UpdatedAt    *time.Time          `json:"updatedAt,omitempty"`
 }
 
 // JobStatus defines model for Job.Status.
@@ -297,6 +572,9 @@ type SubnetList struct {
 	Items []Subnet `json:"items"`
 }
 
+// AppServiceId defines model for appServiceId.
+type AppServiceId = openapi_types.UUID
+
 // JobId defines model for jobId.
 type JobId = openapi_types.UUID
 
@@ -321,6 +599,9 @@ type InternalServerError = Error
 // NotFound Standard error response returned for all 4xx and 5xx responses.
 type NotFound = Error
 
+// NotImplemented Standard error response returned for all 4xx and 5xx responses.
+type NotImplemented = Error
+
 // Unauthorized Standard error response returned for all 4xx and 5xx responses.
 type Unauthorized = Error
 
@@ -339,6 +620,15 @@ type ListCIDRAllocationsParams struct {
 	Offset *Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListAppServicesParams defines parameters for ListAppServices.
+type ListAppServicesParams struct {
+	// Limit Maximum number of items to return (1–100, default 20).
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Zero-based offset of the first item to return (default 0).
+	Offset *Offset `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListNetworkJobsParams defines parameters for ListNetworkJobs.
 type ListNetworkJobsParams struct {
 	// Limit Maximum number of items to return (1–100, default 20).
@@ -348,8 +638,14 @@ type ListNetworkJobsParams struct {
 	Offset *Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ExposeAppServiceJSONRequestBody defines body for ExposeAppService for application/json ContentType.
+type ExposeAppServiceJSONRequestBody = AppServiceExposure
+
 // ProvisionNetworkJSONRequestBody defines body for ProvisionNetwork for application/json ContentType.
 type ProvisionNetworkJSONRequestBody = ProvisionNetworkRequest
+
+// CreateAppServiceJSONRequestBody defines body for CreateAppService for application/json ContentType.
+type CreateAppServiceJSONRequestBody = CreateAppServiceRequest
 
 // ProvisionGatewayJSONRequestBody defines body for ProvisionGateway for application/json ContentType.
 type ProvisionGatewayJSONRequestBody = ProvisionGatewayRequest
@@ -357,8 +653,154 @@ type ProvisionGatewayJSONRequestBody = ProvisionGatewayRequest
 // CreateSubnetJSONRequestBody defines body for CreateSubnet for application/json ContentType.
 type CreateSubnetJSONRequestBody = CreateSubnetRequest
 
+// AsAppServiceSwagger0 returns the union data inside the AppServiceSwagger as a AppServiceSwagger0
+func (t AppServiceSwagger) AsAppServiceSwagger0() (AppServiceSwagger0, error) {
+	var body AppServiceSwagger0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAppServiceSwagger0 overwrites any union data inside the AppServiceSwagger as the provided AppServiceSwagger0
+func (t *AppServiceSwagger) FromAppServiceSwagger0(v AppServiceSwagger0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAppServiceSwagger0 performs a merge with any union data inside the AppServiceSwagger, using the provided AppServiceSwagger0
+func (t *AppServiceSwagger) MergeAppServiceSwagger0(v AppServiceSwagger0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAppServiceSwagger1 returns the union data inside the AppServiceSwagger as a AppServiceSwagger1
+func (t AppServiceSwagger) AsAppServiceSwagger1() (AppServiceSwagger1, error) {
+	var body AppServiceSwagger1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAppServiceSwagger1 overwrites any union data inside the AppServiceSwagger as the provided AppServiceSwagger1
+func (t *AppServiceSwagger) FromAppServiceSwagger1(v AppServiceSwagger1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAppServiceSwagger1 performs a merge with any union data inside the AppServiceSwagger, using the provided AppServiceSwagger1
+func (t *AppServiceSwagger) MergeAppServiceSwagger1(v AppServiceSwagger1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AppServiceSwagger) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.InlineSpec != nil {
+		object["inlineSpec"], err = json.Marshal(t.InlineSpec)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'inlineSpec': %w", err)
+		}
+	}
+
+	object["openapiPath"], err = json.Marshal(t.OpenapiPath)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'openapiPath': %w", err)
+	}
+
+	object["publicPath"], err = json.Marshal(t.PublicPath)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'publicPath': %w", err)
+	}
+
+	if t.SpecUrl != nil {
+		object["specUrl"], err = json.Marshal(t.SpecUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'specUrl': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *AppServiceSwagger) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["inlineSpec"]; found {
+		err = json.Unmarshal(raw, &t.InlineSpec)
+		if err != nil {
+			return fmt.Errorf("error reading 'inlineSpec': %w", err)
+		}
+	}
+
+	if raw, found := object["openapiPath"]; found {
+		err = json.Unmarshal(raw, &t.OpenapiPath)
+		if err != nil {
+			return fmt.Errorf("error reading 'openapiPath': %w", err)
+		}
+	}
+
+	if raw, found := object["publicPath"]; found {
+		err = json.Unmarshal(raw, &t.PublicPath)
+		if err != nil {
+			return fmt.Errorf("error reading 'publicPath': %w", err)
+		}
+	}
+
+	if raw, found := object["specUrl"]; found {
+		err = json.Unmarshal(raw, &t.SpecUrl)
+		if err != nil {
+			return fmt.Errorf("error reading 'specUrl': %w", err)
+		}
+	}
+
+	return err
+}
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// Delete an app service
+	// (DELETE /v1/app-services/{appServiceId})
+	DeleteAppService(w http.ResponseWriter, r *http.Request, appServiceId AppServiceId)
+	// Get app service status
+	// (GET /v1/app-services/{appServiceId})
+	GetAppService(w http.ResponseWriter, r *http.Request, appServiceId AppServiceId)
+	// Remove app service internet gateway exposure
+	// (DELETE /v1/app-services/{appServiceId}/exposure)
+	RemoveAppServiceExposure(w http.ResponseWriter, r *http.Request, appServiceId AppServiceId)
+	// Expose an app service through an internet gateway
+	// (POST /v1/app-services/{appServiceId}/exposure)
+	ExposeAppService(w http.ResponseWriter, r *http.Request, appServiceId AppServiceId)
 	// List CIDR allocations
 	// (GET /v1/cidr/allocations)
 	ListCIDRAllocations(w http.ResponseWriter, r *http.Request, params ListCIDRAllocationsParams)
@@ -374,6 +816,12 @@ type ServerInterface interface {
 	// Get network provisioning status
 	// (GET /v1/networks/{networkId})
 	GetNetworkProvisioningStatus(w http.ResponseWriter, r *http.Request, networkId NetworkId)
+	// List app services in a network
+	// (GET /v1/networks/{networkId}/app-services)
+	ListAppServices(w http.ResponseWriter, r *http.Request, networkId NetworkId, params ListAppServicesParams)
+	// Create an app service in a network
+	// (POST /v1/networks/{networkId}/app-services)
+	CreateAppService(w http.ResponseWriter, r *http.Request, networkId NetworkId)
 	// Remove the internet gateway
 	// (DELETE /v1/networks/{networkId}/gateway)
 	RemoveGateway(w http.ResponseWriter, r *http.Request, networkId NetworkId)
@@ -402,6 +850,134 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// DeleteAppService operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAppService(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appServiceId" -------------
+	var appServiceId AppServiceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appServiceId", r.PathValue("appServiceId"), &appServiceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appServiceId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, InternalSecretScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAppService(w, r, appServiceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAppService operation middleware
+func (siw *ServerInterfaceWrapper) GetAppService(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appServiceId" -------------
+	var appServiceId AppServiceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appServiceId", r.PathValue("appServiceId"), &appServiceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appServiceId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, InternalSecretScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAppService(w, r, appServiceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RemoveAppServiceExposure operation middleware
+func (siw *ServerInterfaceWrapper) RemoveAppServiceExposure(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appServiceId" -------------
+	var appServiceId AppServiceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appServiceId", r.PathValue("appServiceId"), &appServiceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appServiceId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, InternalSecretScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RemoveAppServiceExposure(w, r, appServiceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ExposeAppService operation middleware
+func (siw *ServerInterfaceWrapper) ExposeAppService(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "appServiceId" -------------
+	var appServiceId AppServiceId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "appServiceId", r.PathValue("appServiceId"), &appServiceId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "appServiceId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, InternalSecretScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ExposeAppService(w, r, appServiceId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListCIDRAllocations operation middleware
 func (siw *ServerInterfaceWrapper) ListCIDRAllocations(w http.ResponseWriter, r *http.Request) {
@@ -562,6 +1138,99 @@ func (siw *ServerInterfaceWrapper) GetNetworkProvisioningStatus(w http.ResponseW
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetNetworkProvisioningStatus(w, r, networkId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListAppServices operation middleware
+func (siw *ServerInterfaceWrapper) ListAppServices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "networkId" -------------
+	var networkId NetworkId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "networkId", r.PathValue("networkId"), &networkId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "networkId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, InternalSecretScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListAppServicesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "offset", r.URL.Query(), &params.Offset, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "offset"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAppServices(w, r, networkId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateAppService operation middleware
+func (siw *ServerInterfaceWrapper) CreateAppService(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "networkId" -------------
+	var networkId NetworkId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "networkId", r.PathValue("networkId"), &networkId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid"})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "networkId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, InternalSecretScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAppService(w, r, networkId)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -912,11 +1581,17 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/app-services/{appServiceId}", wrapper.DeleteAppService)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/app-services/{appServiceId}", wrapper.GetAppService)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/app-services/{appServiceId}/exposure", wrapper.RemoveAppServiceExposure)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/app-services/{appServiceId}/exposure", wrapper.ExposeAppService)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/cidr/allocations", wrapper.ListCIDRAllocations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/jobs/{jobId}", wrapper.GetJob)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/networks", wrapper.ProvisionNetwork)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/networks/{networkId}", wrapper.DeprovisionNetwork)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/networks/{networkId}", wrapper.GetNetworkProvisioningStatus)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/networks/{networkId}/app-services", wrapper.ListAppServices)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/networks/{networkId}/app-services", wrapper.CreateAppService)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/networks/{networkId}/gateway", wrapper.RemoveGateway)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/networks/{networkId}/gateway", wrapper.GetGatewayStatus)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/networks/{networkId}/gateway", wrapper.ProvisionGateway)
@@ -935,9 +1610,452 @@ type InternalServerErrorJSONResponse Error
 
 type NotFoundJSONResponse Error
 
+type NotImplementedJSONResponse Error
+
 type UnauthorizedJSONResponse Error
 
 type UnprocessableEntityJSONResponse Error
+
+type DeleteAppServiceRequestObject struct {
+	AppServiceId AppServiceId `json:"appServiceId"`
+}
+
+type DeleteAppServiceResponseObject interface {
+	VisitDeleteAppServiceResponse(w http.ResponseWriter) error
+}
+
+type DeleteAppService202JSONResponse Job
+
+func (response DeleteAppService202JSONResponse) VisitDeleteAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAppService401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response DeleteAppService401JSONResponse) VisitDeleteAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAppService404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response DeleteAppService404JSONResponse) VisitDeleteAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAppService409JSONResponse struct{ ConflictJSONResponse }
+
+func (response DeleteAppService409JSONResponse) VisitDeleteAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAppService422JSONResponse struct {
+	UnprocessableEntityJSONResponse
+}
+
+func (response DeleteAppService422JSONResponse) VisitDeleteAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAppService500JSONResponse struct {
+	InternalServerErrorJSONResponse
+}
+
+func (response DeleteAppService500JSONResponse) VisitDeleteAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteAppService501JSONResponse struct{ NotImplementedJSONResponse }
+
+func (response DeleteAppService501JSONResponse) VisitDeleteAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAppServiceRequestObject struct {
+	AppServiceId AppServiceId `json:"appServiceId"`
+}
+
+type GetAppServiceResponseObject interface {
+	VisitGetAppServiceResponse(w http.ResponseWriter) error
+}
+
+type GetAppService200JSONResponse AppService
+
+func (response GetAppService200JSONResponse) VisitGetAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAppService401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response GetAppService401JSONResponse) VisitGetAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAppService404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response GetAppService404JSONResponse) VisitGetAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAppService422JSONResponse struct {
+	UnprocessableEntityJSONResponse
+}
+
+func (response GetAppService422JSONResponse) VisitGetAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAppService500JSONResponse struct {
+	InternalServerErrorJSONResponse
+}
+
+func (response GetAppService500JSONResponse) VisitGetAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAppService501JSONResponse struct{ NotImplementedJSONResponse }
+
+func (response GetAppService501JSONResponse) VisitGetAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAppServiceExposureRequestObject struct {
+	AppServiceId AppServiceId `json:"appServiceId"`
+}
+
+type RemoveAppServiceExposureResponseObject interface {
+	VisitRemoveAppServiceExposureResponse(w http.ResponseWriter) error
+}
+
+type RemoveAppServiceExposure202JSONResponse Job
+
+func (response RemoveAppServiceExposure202JSONResponse) VisitRemoveAppServiceExposureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAppServiceExposure401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response RemoveAppServiceExposure401JSONResponse) VisitRemoveAppServiceExposureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAppServiceExposure404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response RemoveAppServiceExposure404JSONResponse) VisitRemoveAppServiceExposureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAppServiceExposure409JSONResponse struct{ ConflictJSONResponse }
+
+func (response RemoveAppServiceExposure409JSONResponse) VisitRemoveAppServiceExposureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAppServiceExposure422JSONResponse struct {
+	UnprocessableEntityJSONResponse
+}
+
+func (response RemoveAppServiceExposure422JSONResponse) VisitRemoveAppServiceExposureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAppServiceExposure500JSONResponse struct {
+	InternalServerErrorJSONResponse
+}
+
+func (response RemoveAppServiceExposure500JSONResponse) VisitRemoveAppServiceExposureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RemoveAppServiceExposure501JSONResponse struct{ NotImplementedJSONResponse }
+
+func (response RemoveAppServiceExposure501JSONResponse) VisitRemoveAppServiceExposureResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExposeAppServiceRequestObject struct {
+	AppServiceId AppServiceId `json:"appServiceId"`
+	Body         *ExposeAppServiceJSONRequestBody
+}
+
+type ExposeAppServiceResponseObject interface {
+	VisitExposeAppServiceResponse(w http.ResponseWriter) error
+}
+
+type ExposeAppService202JSONResponse Job
+
+func (response ExposeAppService202JSONResponse) VisitExposeAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExposeAppService400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response ExposeAppService400JSONResponse) VisitExposeAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExposeAppService401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ExposeAppService401JSONResponse) VisitExposeAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExposeAppService404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ExposeAppService404JSONResponse) VisitExposeAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExposeAppService409JSONResponse struct{ ConflictJSONResponse }
+
+func (response ExposeAppService409JSONResponse) VisitExposeAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExposeAppService422JSONResponse struct {
+	UnprocessableEntityJSONResponse
+}
+
+func (response ExposeAppService422JSONResponse) VisitExposeAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExposeAppService500JSONResponse struct {
+	InternalServerErrorJSONResponse
+}
+
+func (response ExposeAppService500JSONResponse) VisitExposeAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ExposeAppService501JSONResponse struct{ NotImplementedJSONResponse }
+
+func (response ExposeAppService501JSONResponse) VisitExposeAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
 
 type ListCIDRAllocationsRequestObject struct {
 	Params ListCIDRAllocationsParams
@@ -1359,6 +2477,228 @@ func (response GetNetworkProvisioningStatus500JSONResponse) VisitGetNetworkProvi
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAppServicesRequestObject struct {
+	NetworkId NetworkId `json:"networkId"`
+	Params    ListAppServicesParams
+}
+
+type ListAppServicesResponseObject interface {
+	VisitListAppServicesResponse(w http.ResponseWriter) error
+}
+
+type ListAppServices200JSONResponse AppServiceList
+
+func (response ListAppServices200JSONResponse) VisitListAppServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAppServices401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response ListAppServices401JSONResponse) VisitListAppServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAppServices404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response ListAppServices404JSONResponse) VisitListAppServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAppServices422JSONResponse struct {
+	UnprocessableEntityJSONResponse
+}
+
+func (response ListAppServices422JSONResponse) VisitListAppServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAppServices500JSONResponse struct {
+	InternalServerErrorJSONResponse
+}
+
+func (response ListAppServices500JSONResponse) VisitListAppServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAppServices501JSONResponse struct{ NotImplementedJSONResponse }
+
+func (response ListAppServices501JSONResponse) VisitListAppServicesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(501)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAppServiceRequestObject struct {
+	NetworkId NetworkId `json:"networkId"`
+	Body      *CreateAppServiceJSONRequestBody
+}
+
+type CreateAppServiceResponseObject interface {
+	VisitCreateAppServiceResponse(w http.ResponseWriter) error
+}
+
+type CreateAppService202JSONResponse Job
+
+func (response CreateAppService202JSONResponse) VisitCreateAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAppService400JSONResponse struct{ BadRequestJSONResponse }
+
+func (response CreateAppService400JSONResponse) VisitCreateAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAppService401JSONResponse struct{ UnauthorizedJSONResponse }
+
+func (response CreateAppService401JSONResponse) VisitCreateAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAppService404JSONResponse struct{ NotFoundJSONResponse }
+
+func (response CreateAppService404JSONResponse) VisitCreateAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAppService409JSONResponse struct{ ConflictJSONResponse }
+
+func (response CreateAppService409JSONResponse) VisitCreateAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAppService422JSONResponse struct {
+	UnprocessableEntityJSONResponse
+}
+
+func (response CreateAppService422JSONResponse) VisitCreateAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAppService500JSONResponse struct {
+	InternalServerErrorJSONResponse
+}
+
+func (response CreateAppService500JSONResponse) VisitCreateAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateAppService501JSONResponse struct{ NotImplementedJSONResponse }
+
+func (response CreateAppService501JSONResponse) VisitCreateAppServiceResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(501)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1930,6 +3270,18 @@ func (response CreateSubnet500JSONResponse) VisitCreateSubnetResponse(w http.Res
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// Delete an app service
+	// (DELETE /v1/app-services/{appServiceId})
+	DeleteAppService(ctx context.Context, request DeleteAppServiceRequestObject) (DeleteAppServiceResponseObject, error)
+	// Get app service status
+	// (GET /v1/app-services/{appServiceId})
+	GetAppService(ctx context.Context, request GetAppServiceRequestObject) (GetAppServiceResponseObject, error)
+	// Remove app service internet gateway exposure
+	// (DELETE /v1/app-services/{appServiceId}/exposure)
+	RemoveAppServiceExposure(ctx context.Context, request RemoveAppServiceExposureRequestObject) (RemoveAppServiceExposureResponseObject, error)
+	// Expose an app service through an internet gateway
+	// (POST /v1/app-services/{appServiceId}/exposure)
+	ExposeAppService(ctx context.Context, request ExposeAppServiceRequestObject) (ExposeAppServiceResponseObject, error)
 	// List CIDR allocations
 	// (GET /v1/cidr/allocations)
 	ListCIDRAllocations(ctx context.Context, request ListCIDRAllocationsRequestObject) (ListCIDRAllocationsResponseObject, error)
@@ -1945,6 +3297,12 @@ type StrictServerInterface interface {
 	// Get network provisioning status
 	// (GET /v1/networks/{networkId})
 	GetNetworkProvisioningStatus(ctx context.Context, request GetNetworkProvisioningStatusRequestObject) (GetNetworkProvisioningStatusResponseObject, error)
+	// List app services in a network
+	// (GET /v1/networks/{networkId}/app-services)
+	ListAppServices(ctx context.Context, request ListAppServicesRequestObject) (ListAppServicesResponseObject, error)
+	// Create an app service in a network
+	// (POST /v1/networks/{networkId}/app-services)
+	CreateAppService(ctx context.Context, request CreateAppServiceRequestObject) (CreateAppServiceResponseObject, error)
 	// Remove the internet gateway
 	// (DELETE /v1/networks/{networkId}/gateway)
 	RemoveGateway(ctx context.Context, request RemoveGatewayRequestObject) (RemoveGatewayResponseObject, error)
@@ -1992,6 +3350,117 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// DeleteAppService operation middleware
+func (sh *strictHandler) DeleteAppService(w http.ResponseWriter, r *http.Request, appServiceId AppServiceId) {
+	var request DeleteAppServiceRequestObject
+
+	request.AppServiceId = appServiceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteAppService(ctx, request.(DeleteAppServiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteAppService")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteAppServiceResponseObject); ok {
+		if err := validResponse.VisitDeleteAppServiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAppService operation middleware
+func (sh *strictHandler) GetAppService(w http.ResponseWriter, r *http.Request, appServiceId AppServiceId) {
+	var request GetAppServiceRequestObject
+
+	request.AppServiceId = appServiceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAppService(ctx, request.(GetAppServiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAppService")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAppServiceResponseObject); ok {
+		if err := validResponse.VisitGetAppServiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RemoveAppServiceExposure operation middleware
+func (sh *strictHandler) RemoveAppServiceExposure(w http.ResponseWriter, r *http.Request, appServiceId AppServiceId) {
+	var request RemoveAppServiceExposureRequestObject
+
+	request.AppServiceId = appServiceId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RemoveAppServiceExposure(ctx, request.(RemoveAppServiceExposureRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RemoveAppServiceExposure")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RemoveAppServiceExposureResponseObject); ok {
+		if err := validResponse.VisitRemoveAppServiceExposureResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ExposeAppService operation middleware
+func (sh *strictHandler) ExposeAppService(w http.ResponseWriter, r *http.Request, appServiceId AppServiceId) {
+	var request ExposeAppServiceRequestObject
+
+	request.AppServiceId = appServiceId
+
+	var body ExposeAppServiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ExposeAppService(ctx, request.(ExposeAppServiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ExposeAppService")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ExposeAppServiceResponseObject); ok {
+		if err := validResponse.VisitExposeAppServiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListCIDRAllocations operation middleware
@@ -2122,6 +3591,66 @@ func (sh *strictHandler) GetNetworkProvisioningStatus(w http.ResponseWriter, r *
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(GetNetworkProvisioningStatusResponseObject); ok {
 		if err := validResponse.VisitGetNetworkProvisioningStatusResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListAppServices operation middleware
+func (sh *strictHandler) ListAppServices(w http.ResponseWriter, r *http.Request, networkId NetworkId, params ListAppServicesParams) {
+	var request ListAppServicesRequestObject
+
+	request.NetworkId = networkId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListAppServices(ctx, request.(ListAppServicesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListAppServices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListAppServicesResponseObject); ok {
+		if err := validResponse.VisitListAppServicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateAppService operation middleware
+func (sh *strictHandler) CreateAppService(w http.ResponseWriter, r *http.Request, networkId NetworkId) {
+	var request CreateAppServiceRequestObject
+
+	request.NetworkId = networkId
+
+	var body CreateAppServiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateAppService(ctx, request.(CreateAppServiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateAppService")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateAppServiceResponseObject); ok {
+		if err := validResponse.VisitCreateAppServiceResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2305,57 +3834,101 @@ func (sh *strictHandler) CreateSubnet(w http.ResponseWriter, r *http.Request, ne
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"XXMICDRb/M8RisY63pawrVn9afj63fp/AQAA//8=",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

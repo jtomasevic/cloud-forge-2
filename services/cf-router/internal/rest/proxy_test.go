@@ -42,6 +42,26 @@ func TestRouteTable_Match_accountsPath(t *testing.T) {
 	}
 }
 
+func TestDefaultRouteTable_routesAppServicesToProvisioner(t *testing.T) {
+	rt := rest.DefaultRouteTable("http://accounts", "http://provisioner")
+	tests := []string{
+		"/v1/app-services/550e8400-e29b-41d4-a716-446655440000",
+		"/v1/app-services/550e8400-e29b-41d4-a716-446655440000/exposure",
+		"/v1/networks/550e8400-e29b-41d4-a716-446655440000/app-services",
+	}
+	for _, path := range tests {
+		t.Run(path, func(t *testing.T) {
+			e, ok := rt.Match(path)
+			if !ok {
+				t.Fatal("expected match")
+			}
+			if e.TargetURL != "http://provisioner" {
+				t.Fatalf("target: %s", e.TargetURL)
+			}
+		})
+	}
+}
+
 func TestProxyHandler_injectsTenantHeader_andStripsAPIKey(t *testing.T) {
 	var sawTenant string
 	var sawAPIKey string
