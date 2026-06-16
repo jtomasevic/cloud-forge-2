@@ -219,6 +219,33 @@ func TestRunMigrations_SkipsUseStatements(t *testing.T) {
 	}
 }
 
+func TestRunMigrations_SkipsLineComments(t *testing.T) {
+	dir := t.TempDir()
+	writeCQL(t, dir, "001_comments.cql",
+		"USE cloudforge;\n"+
+			"-- Migration comments document why denormalized rows exist.\n"+
+			"CREATE TABLE IF NOT EXISTS app_services (id UUID PRIMARY KEY);\n"+
+			"-- A trailing comment must not become its own statement.\n")
+
+	q := &fakeQuerier{}
+	err := migrate.RunMigrations(context.Background(), migrate.MigrationConfig{
+		Session:    q,
+		ScriptsDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("RunMigrations returned unexpected error: %v", err)
+	}
+
+	for _, call := range q.execCalls {
+		if strings.Contains(call, "--") {
+			t.Fatalf("line comments should be stripped before ExecCQL, got %q", call)
+		}
+	}
+	if indexOf(q.execCalls, "CREATE TABLE IF NOT EXISTS app_services") == -1 {
+		t.Fatal("commented migration statement was not executed")
+	}
+}
+
 func TestRunMigrations_ReturnsErrorWhenExecFails(t *testing.T) {
 	// ExecCQL fails immediately (on the CREATE TABLE schema_migrations call).
 	dir := t.TempDir()
