@@ -20,6 +20,8 @@ info:
 
     - `/v1/networks/**` → CF-Provisioner (`http://cf-provisioner:8082`)
 
+    - `/v1/app-services/**` → CF-Provisioner (`http://cf-provisioner:8082`)
+
     - `/v1/gateways/**` → CF-Provisioner (`http://cf-provisioner:8082`)
 
     - `/v1/jobs/**` → CF-Provisioner (`http://cf-provisioner:8082`)

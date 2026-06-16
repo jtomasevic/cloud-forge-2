@@ -22,6 +22,99 @@ const (
 	InternalSecretScopes internalSecretContextKey = "InternalSecret.Scopes"
 )
 
+// Defines values for AppServiceExposureType.
+const (
+	InternetGateway AppServiceExposureType = "InternetGateway"
+)
+
+// Valid indicates whether the value is a known member of the AppServiceExposureType enum.
+func (e AppServiceExposureType) Valid() bool {
+	switch e {
+	case InternetGateway:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AppServicePortProtocol.
+const (
+	GRPC AppServicePortProtocol = "GRPC"
+	HTTP AppServicePortProtocol = "HTTP"
+	TCP  AppServicePortProtocol = "TCP"
+)
+
+// Valid indicates whether the value is a known member of the AppServicePortProtocol enum.
+func (e AppServicePortProtocol) Valid() bool {
+	switch e {
+	case GRPC:
+		return true
+	case HTTP:
+		return true
+	case TCP:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AppServiceRuntimeServiceType.
+const (
+	Container AppServiceRuntimeServiceType = "container"
+	Grpc      AppServiceRuntimeServiceType = "grpc"
+	Rest      AppServiceRuntimeServiceType = "rest"
+	Tcp       AppServiceRuntimeServiceType = "tcp"
+	Ui        AppServiceRuntimeServiceType = "ui"
+	Worker    AppServiceRuntimeServiceType = "worker"
+)
+
+// Valid indicates whether the value is a known member of the AppServiceRuntimeServiceType enum.
+func (e AppServiceRuntimeServiceType) Valid() bool {
+	switch e {
+	case Container:
+		return true
+	case Grpc:
+		return true
+	case Rest:
+		return true
+	case Tcp:
+		return true
+	case Ui:
+		return true
+	case Worker:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AppServiceStatusPhase.
+const (
+	AppServiceStatusPhaseCreating AppServiceStatusPhase = "creating"
+	AppServiceStatusPhaseDeleting AppServiceStatusPhase = "deleting"
+	AppServiceStatusPhaseFailed   AppServiceStatusPhase = "failed"
+	AppServiceStatusPhaseRunning  AppServiceStatusPhase = "running"
+	AppServiceStatusPhaseUpdating AppServiceStatusPhase = "updating"
+)
+
+// Valid indicates whether the value is a known member of the AppServiceStatusPhase enum.
+func (e AppServiceStatusPhase) Valid() bool {
+	switch e {
+	case AppServiceStatusPhaseCreating:
+		return true
+	case AppServiceStatusPhaseDeleting:
+		return true
+	case AppServiceStatusPhaseFailed:
+		return true
+	case AppServiceStatusPhaseRunning:
+		return true
+	case AppServiceStatusPhaseUpdating:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateSubnetRequestType.
 const (
 	CreateSubnetRequestTypePrivate CreateSubnetRequestType = "private"
@@ -93,23 +186,35 @@ func (e JobStatus) Valid() bool {
 
 // Defines values for JobType.
 const (
-	DeprovisionNetwork JobType = "deprovision_network"
-	ProvisionGateway   JobType = "provision_gateway"
-	ProvisionNetwork   JobType = "provision_network"
-	ProvisionSubnet    JobType = "provision_subnet"
-	RemoveGateway      JobType = "remove_gateway"
+	CreateAppService         JobType = "create_app_service"
+	DeleteAppService         JobType = "delete_app_service"
+	DeprovisionNetwork       JobType = "deprovision_network"
+	ExposeAppService         JobType = "expose_app_service"
+	ProvisionGateway         JobType = "provision_gateway"
+	ProvisionNetwork         JobType = "provision_network"
+	ProvisionSubnet          JobType = "provision_subnet"
+	RemoveAppServiceExposure JobType = "remove_app_service_exposure"
+	RemoveGateway            JobType = "remove_gateway"
 )
 
 // Valid indicates whether the value is a known member of the JobType enum.
 func (e JobType) Valid() bool {
 	switch e {
+	case CreateAppService:
+		return true
+	case DeleteAppService:
+		return true
 	case DeprovisionNetwork:
+		return true
+	case ExposeAppService:
 		return true
 	case ProvisionGateway:
 		return true
 	case ProvisionNetwork:
 		return true
 	case ProvisionSubnet:
+		return true
+	case RemoveAppServiceExposure:
 		return true
 	case RemoveGateway:
 		return true
@@ -120,25 +225,25 @@ func (e JobType) Valid() bool {
 
 // Defines values for NetworkProvisioningStatusStatus.
 const (
-	Active         NetworkProvisioningStatusStatus = "active"
-	Deprovisioned  NetworkProvisioningStatusStatus = "deprovisioned"
-	Deprovisioning NetworkProvisioningStatusStatus = "deprovisioning"
-	Failed         NetworkProvisioningStatusStatus = "failed"
-	Provisioning   NetworkProvisioningStatusStatus = "provisioning"
+	NetworkProvisioningStatusStatusActive         NetworkProvisioningStatusStatus = "active"
+	NetworkProvisioningStatusStatusDeprovisioned  NetworkProvisioningStatusStatus = "deprovisioned"
+	NetworkProvisioningStatusStatusDeprovisioning NetworkProvisioningStatusStatus = "deprovisioning"
+	NetworkProvisioningStatusStatusFailed         NetworkProvisioningStatusStatus = "failed"
+	NetworkProvisioningStatusStatusProvisioning   NetworkProvisioningStatusStatus = "provisioning"
 )
 
 // Valid indicates whether the value is a known member of the NetworkProvisioningStatusStatus enum.
 func (e NetworkProvisioningStatusStatus) Valid() bool {
 	switch e {
-	case Active:
+	case NetworkProvisioningStatusStatusActive:
 		return true
-	case Deprovisioned:
+	case NetworkProvisioningStatusStatusDeprovisioned:
 		return true
-	case Deprovisioning:
+	case NetworkProvisioningStatusStatusDeprovisioning:
 		return true
-	case Failed:
+	case NetworkProvisioningStatusStatusFailed:
 		return true
-	case Provisioning:
+	case NetworkProvisioningStatusStatusProvisioning:
 		return true
 	default:
 		return false
@@ -163,6 +268,163 @@ func (e SubnetType) Valid() bool {
 	}
 }
 
+// AppService defines model for AppService.
+type AppService struct {
+	CreatedAt time.Time           `json:"createdAt"`
+	Exposure  *AppServiceExposure `json:"exposure,omitempty"`
+	Id        openapi_types.UUID  `json:"id"`
+	Name      string              `json:"name"`
+	NetworkId openapi_types.UUID  `json:"networkId"`
+
+	// Runtime Runtime declaration for a CloudForge app service. The MVP supports immutable image references and local-development Docker builds; exactly one of `image` or `build` must be supplied by callers. Production callers should prefer immutable registry image tags or digests.
+	Runtime AppServiceRuntime `json:"runtime"`
+	Status  AppServiceStatus  `json:"status"`
+
+	// SubnetId Subnet where the app service is placed. The subnet must exist, must belong to `networkId`, and its public/private type controls whether internet gateway exposure can be requested.
+	SubnetId  openapi_types.UUID `json:"subnetId"`
+	UpdatedAt *time.Time         `json:"updatedAt,omitempty"`
+}
+
+// AppServiceBuild Local-development Docker build metadata. Production control-plane callers should pass a registry `image` instead of arbitrary build context until a secure build service exists.
+type AppServiceBuild struct {
+	// Args Optional Docker build arguments.
+	Args *map[string]string `json:"args,omitempty"`
+
+	// Context Build context path or source reference understood by the caller/build adapter.
+	Context string `json:"context"`
+
+	// Dockerfile Dockerfile path relative to `context`.
+	Dockerfile string `json:"dockerfile"`
+
+	// Target Optional Docker build target stage.
+	Target *string `json:"target,omitempty"`
+}
+
+// AppServiceEnvVar defines model for AppServiceEnvVar.
+type AppServiceEnvVar struct {
+	Name string `json:"name"`
+
+	// SecretRef Optional secret reference resolved by a future secret adapter.
+	SecretRef *string `json:"secretRef,omitempty"`
+
+	// Value Plaintext value. Use `secretRef` for values that must not be stored inline.
+	Value *string `json:"value,omitempty"`
+}
+
+// AppServiceExposure Explicit internet gateway exposure request. Public subnet placement only makes an app service eligible for public routing; it does not create a public route by itself. Private subnet app services must be rejected when this exposure is requested. `portRef` must reference one of the declared runtime ports, the network must have an active internet gateway, and public documentation metadata is mandatory.
+type AppServiceExposure struct {
+	// Host Public hostname to route through the internet gateway.
+	Host string `json:"host"`
+
+	// PortRef Runtime port name to expose. Must match `runtime.ports[].name`.
+	PortRef string `json:"portRef"`
+
+	// Swagger Public documentation metadata required for every app service exposed through an internet gateway. HTTP/REST services must provide either a reachable OpenAPI document URL or an inline OpenAPI document. If a protocol cannot provide an OpenAPI-compatible document yet, internet gateway exposure must be rejected until a protocol-specific documentation adapter exists.
+	Swagger    AppServiceSwagger      `json:"swagger"`
+	TlsEnabled *bool                  `json:"tlsEnabled,omitempty"`
+	Type       AppServiceExposureType `json:"type"`
+}
+
+// AppServiceExposureType defines model for AppServiceExposure.Type.
+type AppServiceExposureType string
+
+// AppServiceList defines model for AppServiceList.
+type AppServiceList struct {
+	Items []AppService `json:"items"`
+}
+
+// AppServicePort defines model for AppServicePort.
+type AppServicePort struct {
+	ContainerPort int `json:"containerPort"`
+
+	// Name Stable port name used by exposure `portRef`.
+	Name string `json:"name"`
+
+	// Protocol MVP public routing supports HTTP through Gateway API HTTPRoute. GRPC and TCP exposure must be rejected until a compatible route and documentation adapter exist.
+	Protocol AppServicePortProtocol `json:"protocol"`
+}
+
+// AppServicePortProtocol MVP public routing supports HTTP through Gateway API HTTPRoute. GRPC and TCP exposure must be rejected until a compatible route and documentation adapter exist.
+type AppServicePortProtocol string
+
+// AppServiceResources Required resource limits for multi-tenant safety. If a later platform plan allows omitted values, CF-Provisioner must fill explicit defaults before creating Kubernetes workloads.
+type AppServiceResources struct {
+	// Cpu CPU request/limit such as `250m`, `500m`, or `1`.
+	Cpu string `json:"cpu"`
+
+	// Memory Memory request/limit such as `256Mi`, `512Mi`, or `1Gi`.
+	Memory string `json:"memory"`
+}
+
+// AppServiceRuntime Runtime declaration for a CloudForge app service. The MVP supports immutable image references and local-development Docker builds; exactly one of `image` or `build` must be supplied by callers. Production callers should prefer immutable registry image tags or digests.
+type AppServiceRuntime struct {
+	// Args Optional container command arguments.
+	Args *[]string `json:"args,omitempty"`
+
+	// Build Local-development Docker build metadata. Production control-plane callers should pass a registry `image` instead of arbitrary build context until a secure build service exists.
+	Build *AppServiceBuild `json:"build,omitempty"`
+
+	// Command Optional container entrypoint override.
+	Command *[]string           `json:"command,omitempty"`
+	Env     *[]AppServiceEnvVar `json:"env,omitempty"`
+
+	// Image Container image reference to deploy. Production usage should pass an immutable tag or digest. Either `image` or `build` is required.
+	Image *string           `json:"image,omitempty"`
+	Ports *[]AppServicePort `json:"ports,omitempty"`
+
+	// Replicas Desired replica count. The MVP may cap this to one.
+	Replicas *int `json:"replicas,omitempty"`
+
+	// Resources Required resource limits for multi-tenant safety. If a later platform plan allows omitted values, CF-Provisioner must fill explicit defaults before creating Kubernetes workloads.
+	Resources AppServiceResources `json:"resources"`
+
+	// ServiceType Workload shape. `rest`, `grpc`, `ui`, and `tcp` services can declare ports. `worker` services may declare no ports and cannot be exposed through an internet gateway.
+	ServiceType AppServiceRuntimeServiceType `json:"serviceType"`
+}
+
+// AppServiceRuntimeServiceType Workload shape. `rest`, `grpc`, `ui`, and `tcp` services can declare ports. `worker` services may declare no ports and cannot be exposed through an internet gateway.
+type AppServiceRuntimeServiceType string
+
+// AppServiceStatus defines model for AppServiceStatus.
+type AppServiceStatus struct {
+	DesiredReplicas *int    `json:"desiredReplicas,omitempty"`
+	FailureReason   *string `json:"failureReason,omitempty"`
+
+	// InternalDNSName DNS name reachable inside the tenant private network.
+	InternalDNSName *string               `json:"internalDNSName,omitempty"`
+	Phase           AppServiceStatusPhase `json:"phase"`
+
+	// PublicEndpoint Public URL when internet gateway exposure is active.
+	PublicEndpoint *string    `json:"publicEndpoint,omitempty"`
+	ReadyReplicas  *int       `json:"readyReplicas,omitempty"`
+	UpdatedAt      *time.Time `json:"updatedAt,omitempty"`
+}
+
+// AppServiceStatusPhase defines model for AppServiceStatus.Phase.
+type AppServiceStatusPhase string
+
+// AppServiceSwagger Public documentation metadata required for every app service exposed through an internet gateway. HTTP/REST services must provide either a reachable OpenAPI document URL or an inline OpenAPI document. If a protocol cannot provide an OpenAPI-compatible document yet, internet gateway exposure must be rejected until a protocol-specific documentation adapter exists.
+type AppServiceSwagger struct {
+	// InlineSpec Inline OpenAPI document object.
+	InlineSpec *map[string]interface{} `json:"inlineSpec,omitempty"`
+
+	// OpenapiPath Public OpenAPI JSON path routed for the exposed service.
+	OpenapiPath string `json:"openapiPath"`
+
+	// PublicPath Public Swagger UI path routed for the exposed service.
+	PublicPath string `json:"publicPath"`
+
+	// SpecUrl URL where CF can fetch the service OpenAPI document.
+	SpecUrl *string `json:"specUrl,omitempty"`
+	union   json.RawMessage
+}
+
+// AppServiceSwagger0 defines model for .
+type AppServiceSwagger0 = interface{}
+
+// AppServiceSwagger1 defines model for .
+type AppServiceSwagger1 = interface{}
+
 // CIDRAllocation defines model for CIDRAllocation.
 type CIDRAllocation struct {
 	AllocatedAt time.Time          `json:"allocatedAt"`
@@ -174,6 +436,17 @@ type CIDRAllocation struct {
 // CIDRAllocationList defines model for CIDRAllocationList.
 type CIDRAllocationList struct {
 	Items []CIDRAllocation `json:"items"`
+}
+
+// CreateAppServiceRequest Creates an app service in an active private network. CF-Provisioner must validate that the network is active, that `subnetId` exists and belongs to the path `networkId`, that resource limits are present, and that any requested internet gateway exposure targets a declared runtime port and a public subnet. Public subnet placement alone never creates public exposure.
+type CreateAppServiceRequest struct {
+	// Exposure Explicit internet gateway exposure request. Public subnet placement only makes an app service eligible for public routing; it does not create a public route by itself. Private subnet app services must be rejected when this exposure is requested. `portRef` must reference one of the declared runtime ports, the network must have an active internet gateway, and public documentation metadata is mandatory.
+	Exposure *AppServiceExposure `json:"exposure,omitempty"`
+	Name     string              `json:"name"`
+
+	// Runtime Runtime declaration for a CloudForge app service. The MVP supports immutable image references and local-development Docker builds; exactly one of `image` or `build` must be supplied by callers. Production callers should prefer immutable registry image tags or digests.
+	Runtime  AppServiceRuntime  `json:"runtime"`
+	SubnetId openapi_types.UUID `json:"subnetId"`
 }
 
 // CreateSubnetRequest defines model for CreateSubnetRequest.
@@ -214,13 +487,15 @@ type GatewayStatusStatus string
 
 // Job defines model for Job.
 type Job struct {
-	CreatedAt    time.Time          `json:"createdAt"`
-	ErrorMessage *string            `json:"errorMessage,omitempty"`
-	Id           openapi_types.UUID `json:"id"`
-	NetworkId    openapi_types.UUID `json:"networkId"`
-	Status       JobStatus          `json:"status"`
-	Type         JobType            `json:"type"`
-	UpdatedAt    *time.Time         `json:"updatedAt,omitempty"`
+	// AppServiceId App service affected by this job, when the job type is app-service related.
+	AppServiceId *openapi_types.UUID `json:"appServiceId,omitempty"`
+	CreatedAt    time.Time           `json:"createdAt"`
+	ErrorMessage *string             `json:"errorMessage,omitempty"`
+	Id           openapi_types.UUID  `json:"id"`
+	NetworkId    openapi_types.UUID  `json:"networkId"`
+	Status       JobStatus           `json:"status"`
+	Type         JobType             `json:"type"`
+	UpdatedAt    *time.Time          `json:"updatedAt,omitempty"`
 }
 
 // JobStatus defines model for Job.Status.
@@ -291,6 +566,9 @@ type SubnetList struct {
 	Items []Subnet `json:"items"`
 }
 
+// AppServiceId defines model for appServiceId.
+type AppServiceId = openapi_types.UUID
+
 // JobId defines model for jobId.
 type JobId = openapi_types.UUID
 
@@ -315,6 +593,9 @@ type InternalServerError = Error
 // NotFound Standard error response returned for all 4xx and 5xx responses.
 type NotFound = Error
 
+// NotImplemented Standard error response returned for all 4xx and 5xx responses.
+type NotImplemented = Error
+
 // Unauthorized Standard error response returned for all 4xx and 5xx responses.
 type Unauthorized = Error
 
@@ -333,6 +614,15 @@ type ListCIDRAllocationsParams struct {
 	Offset *Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListAppServicesParams defines parameters for ListAppServices.
+type ListAppServicesParams struct {
+	// Limit Maximum number of items to return (1–100, default 20).
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Offset Zero-based offset of the first item to return (default 0).
+	Offset *Offset `form:"offset,omitempty" json:"offset,omitempty"`
+}
+
 // ListNetworkJobsParams defines parameters for ListNetworkJobs.
 type ListNetworkJobsParams struct {
 	// Limit Maximum number of items to return (1–100, default 20).
@@ -342,14 +632,154 @@ type ListNetworkJobsParams struct {
 	Offset *Offset `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ExposeAppServiceJSONRequestBody defines body for ExposeAppService for application/json ContentType.
+type ExposeAppServiceJSONRequestBody = AppServiceExposure
+
 // ProvisionNetworkJSONRequestBody defines body for ProvisionNetwork for application/json ContentType.
 type ProvisionNetworkJSONRequestBody = ProvisionNetworkRequest
+
+// CreateAppServiceJSONRequestBody defines body for CreateAppService for application/json ContentType.
+type CreateAppServiceJSONRequestBody = CreateAppServiceRequest
 
 // ProvisionGatewayJSONRequestBody defines body for ProvisionGateway for application/json ContentType.
 type ProvisionGatewayJSONRequestBody = ProvisionGatewayRequest
 
 // CreateSubnetJSONRequestBody defines body for CreateSubnet for application/json ContentType.
 type CreateSubnetJSONRequestBody = CreateSubnetRequest
+
+// AsAppServiceSwagger0 returns the union data inside the AppServiceSwagger as a AppServiceSwagger0
+func (t AppServiceSwagger) AsAppServiceSwagger0() (AppServiceSwagger0, error) {
+	var body AppServiceSwagger0
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAppServiceSwagger0 overwrites any union data inside the AppServiceSwagger as the provided AppServiceSwagger0
+func (t *AppServiceSwagger) FromAppServiceSwagger0(v AppServiceSwagger0) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAppServiceSwagger0 performs a merge with any union data inside the AppServiceSwagger, using the provided AppServiceSwagger0
+func (t *AppServiceSwagger) MergeAppServiceSwagger0(v AppServiceSwagger0) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAppServiceSwagger1 returns the union data inside the AppServiceSwagger as a AppServiceSwagger1
+func (t AppServiceSwagger) AsAppServiceSwagger1() (AppServiceSwagger1, error) {
+	var body AppServiceSwagger1
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAppServiceSwagger1 overwrites any union data inside the AppServiceSwagger as the provided AppServiceSwagger1
+func (t *AppServiceSwagger) FromAppServiceSwagger1(v AppServiceSwagger1) error {
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAppServiceSwagger1 performs a merge with any union data inside the AppServiceSwagger, using the provided AppServiceSwagger1
+func (t *AppServiceSwagger) MergeAppServiceSwagger1(v AppServiceSwagger1) error {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AppServiceSwagger) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	if err != nil {
+		return nil, err
+	}
+	object := make(map[string]json.RawMessage)
+	if t.union != nil {
+		err = json.Unmarshal(b, &object)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if t.InlineSpec != nil {
+		object["inlineSpec"], err = json.Marshal(t.InlineSpec)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'inlineSpec': %w", err)
+		}
+	}
+
+	object["openapiPath"], err = json.Marshal(t.OpenapiPath)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'openapiPath': %w", err)
+	}
+
+	object["publicPath"], err = json.Marshal(t.PublicPath)
+	if err != nil {
+		return nil, fmt.Errorf("error marshaling 'publicPath': %w", err)
+	}
+
+	if t.SpecUrl != nil {
+		object["specUrl"], err = json.Marshal(t.SpecUrl)
+		if err != nil {
+			return nil, fmt.Errorf("error marshaling 'specUrl': %w", err)
+		}
+	}
+	b, err = json.Marshal(object)
+	return b, err
+}
+
+func (t *AppServiceSwagger) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	if err != nil {
+		return err
+	}
+	object := make(map[string]json.RawMessage)
+	err = json.Unmarshal(b, &object)
+	if err != nil {
+		return err
+	}
+
+	if raw, found := object["inlineSpec"]; found {
+		err = json.Unmarshal(raw, &t.InlineSpec)
+		if err != nil {
+			return fmt.Errorf("error reading 'inlineSpec': %w", err)
+		}
+	}
+
+	if raw, found := object["openapiPath"]; found {
+		err = json.Unmarshal(raw, &t.OpenapiPath)
+		if err != nil {
+			return fmt.Errorf("error reading 'openapiPath': %w", err)
+		}
+	}
+
+	if raw, found := object["publicPath"]; found {
+		err = json.Unmarshal(raw, &t.PublicPath)
+		if err != nil {
+			return fmt.Errorf("error reading 'publicPath': %w", err)
+		}
+	}
+
+	if raw, found := object["specUrl"]; found {
+		err = json.Unmarshal(raw, &t.SpecUrl)
+		if err != nil {
+			return fmt.Errorf("error reading 'specUrl': %w", err)
+		}
+	}
+
+	return err
+}
 
 // RequestEditorFn  is the function signature for the RequestEditor callback function
 type RequestEditorFn func(ctx context.Context, req *http.Request) error
@@ -424,6 +854,20 @@ func WithRequestEditorFn(fn RequestEditorFn) ClientOption {
 
 // The interface specification for the client above.
 type ClientInterface interface {
+	// DeleteAppService request
+	DeleteAppService(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAppService request
+	GetAppService(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveAppServiceExposure request
+	RemoveAppServiceExposure(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ExposeAppServiceWithBody request with any body
+	ExposeAppServiceWithBody(ctx context.Context, appServiceId AppServiceId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ExposeAppService(ctx context.Context, appServiceId AppServiceId, body ExposeAppServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListCIDRAllocations request
 	ListCIDRAllocations(ctx context.Context, params *ListCIDRAllocationsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -440,6 +884,14 @@ type ClientInterface interface {
 
 	// GetNetworkProvisioningStatus request
 	GetNetworkProvisioningStatus(ctx context.Context, networkId NetworkId, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAppServices request
+	ListAppServices(ctx context.Context, networkId NetworkId, params *ListAppServicesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAppServiceWithBody request with any body
+	CreateAppServiceWithBody(ctx context.Context, networkId NetworkId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAppService(ctx context.Context, networkId NetworkId, body CreateAppServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RemoveGateway request
 	RemoveGateway(ctx context.Context, networkId NetworkId, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -462,6 +914,66 @@ type ClientInterface interface {
 	CreateSubnetWithBody(ctx context.Context, networkId NetworkId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	CreateSubnet(ctx context.Context, networkId NetworkId, body CreateSubnetJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+}
+
+func (c *Client) DeleteAppService(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAppServiceRequest(c.Server, appServiceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAppService(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAppServiceRequest(c.Server, appServiceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveAppServiceExposure(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveAppServiceExposureRequest(c.Server, appServiceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExposeAppServiceWithBody(ctx context.Context, appServiceId AppServiceId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExposeAppServiceRequestWithBody(c.Server, appServiceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ExposeAppService(ctx context.Context, appServiceId AppServiceId, body ExposeAppServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExposeAppServiceRequest(c.Server, appServiceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
 }
 
 func (c *Client) ListCIDRAllocations(ctx context.Context, params *ListCIDRAllocationsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -526,6 +1038,42 @@ func (c *Client) DeprovisionNetwork(ctx context.Context, networkId NetworkId, re
 
 func (c *Client) GetNetworkProvisioningStatus(ctx context.Context, networkId NetworkId, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetNetworkProvisioningStatusRequest(c.Server, networkId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAppServices(ctx context.Context, networkId NetworkId, params *ListAppServicesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAppServicesRequest(c.Server, networkId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppServiceWithBody(ctx context.Context, networkId NetworkId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppServiceRequestWithBody(c.Server, networkId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAppService(ctx context.Context, networkId NetworkId, body CreateAppServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAppServiceRequest(c.Server, networkId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -630,6 +1178,155 @@ func (c *Client) CreateSubnet(ctx context.Context, networkId NetworkId, body Cre
 		return nil, err
 	}
 	return c.Client.Do(req)
+}
+
+// NewDeleteAppServiceRequest generates requests for DeleteAppService
+func NewDeleteAppServiceRequest(server string, appServiceId AppServiceId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appServiceId", appServiceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/app-services/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAppServiceRequest generates requests for GetAppService
+func NewGetAppServiceRequest(server string, appServiceId AppServiceId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appServiceId", appServiceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/app-services/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRemoveAppServiceExposureRequest generates requests for RemoveAppServiceExposure
+func NewRemoveAppServiceExposureRequest(server string, appServiceId AppServiceId) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appServiceId", appServiceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/app-services/%s/exposure", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodDelete, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewExposeAppServiceRequest calls the generic ExposeAppService builder with application/json body
+func NewExposeAppServiceRequest(server string, appServiceId AppServiceId, body ExposeAppServiceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewExposeAppServiceRequestWithBody(server, appServiceId, "application/json", bodyReader)
+}
+
+// NewExposeAppServiceRequestWithBody generates requests for ExposeAppService with any type of body
+func NewExposeAppServiceRequestWithBody(server string, appServiceId AppServiceId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "appServiceId", appServiceId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/app-services/%s/exposure", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
 }
 
 // NewListCIDRAllocationsRequest generates requests for ListCIDRAllocations
@@ -836,6 +1533,126 @@ func NewGetNetworkProvisioningStatusRequest(server string, networkId NetworkId) 
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListAppServicesRequest generates requests for ListAppServices
+func NewListAppServicesRequest(server string, networkId NetworkId, params *ListAppServicesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "networkId", networkId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/networks/%s/app-services", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		// queryValues collects non-styled parameters (passthrough, JSON)
+		// that are safe to round-trip through url.Values.Encode().
+		queryValues := queryURL.Query()
+		// rawQueryFragments collects pre-encoded query fragments from
+		// styled parameters, preserving literal commas as delimiters
+		// per the OpenAPI spec (e.g. "color=blue,black,brown").
+		var rawQueryFragments []string
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "limit", *params.Limit, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if params.Offset != nil {
+
+			if queryFrag, err := runtime.StyleParamWithOptions("form", true, "offset", *params.Offset, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationQuery, Type: "integer", Format: ""}); err != nil {
+				return nil, err
+			} else {
+				for _, qp := range strings.Split(queryFrag, "&") {
+					rawQueryFragments = append(rawQueryFragments, qp)
+				}
+			}
+
+		}
+
+		if encoded := queryValues.Encode(); encoded != "" {
+			rawQueryFragments = append(rawQueryFragments, encoded)
+		}
+		queryURL.RawQuery = strings.Join(rawQueryFragments, "&")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAppServiceRequest calls the generic CreateAppService builder with application/json body
+func NewCreateAppServiceRequest(server string, networkId NetworkId, body CreateAppServiceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAppServiceRequestWithBody(server, networkId, "application/json", bodyReader)
+}
+
+// NewCreateAppServiceRequestWithBody generates requests for CreateAppService with any type of body
+func NewCreateAppServiceRequestWithBody(server string, networkId NetworkId, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithOptions("simple", false, "networkId", networkId, runtime.StyleParamOptions{ParamLocation: runtime.ParamLocationPath, Type: "string", Format: "uuid"})
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/v1/networks/%s/app-services", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodPost, queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -1152,6 +1969,20 @@ func WithBaseURL(baseURL string) ClientOption {
 
 // ClientWithResponsesInterface is the interface specification for the client with responses above.
 type ClientWithResponsesInterface interface {
+	// DeleteAppServiceWithResponse request
+	DeleteAppServiceWithResponse(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*DeleteAppServiceResponse, error)
+
+	// GetAppServiceWithResponse request
+	GetAppServiceWithResponse(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*GetAppServiceResponse, error)
+
+	// RemoveAppServiceExposureWithResponse request
+	RemoveAppServiceExposureWithResponse(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*RemoveAppServiceExposureResponse, error)
+
+	// ExposeAppServiceWithBodyWithResponse request with any body
+	ExposeAppServiceWithBodyWithResponse(ctx context.Context, appServiceId AppServiceId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExposeAppServiceResponse, error)
+
+	ExposeAppServiceWithResponse(ctx context.Context, appServiceId AppServiceId, body ExposeAppServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*ExposeAppServiceResponse, error)
+
 	// ListCIDRAllocationsWithResponse request
 	ListCIDRAllocationsWithResponse(ctx context.Context, params *ListCIDRAllocationsParams, reqEditors ...RequestEditorFn) (*ListCIDRAllocationsResponse, error)
 
@@ -1168,6 +1999,14 @@ type ClientWithResponsesInterface interface {
 
 	// GetNetworkProvisioningStatusWithResponse request
 	GetNetworkProvisioningStatusWithResponse(ctx context.Context, networkId NetworkId, reqEditors ...RequestEditorFn) (*GetNetworkProvisioningStatusResponse, error)
+
+	// ListAppServicesWithResponse request
+	ListAppServicesWithResponse(ctx context.Context, networkId NetworkId, params *ListAppServicesParams, reqEditors ...RequestEditorFn) (*ListAppServicesResponse, error)
+
+	// CreateAppServiceWithBodyWithResponse request with any body
+	CreateAppServiceWithBodyWithResponse(ctx context.Context, networkId NetworkId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppServiceResponse, error)
+
+	CreateAppServiceWithResponse(ctx context.Context, networkId NetworkId, body CreateAppServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppServiceResponse, error)
 
 	// RemoveGatewayWithResponse request
 	RemoveGatewayWithResponse(ctx context.Context, networkId NetworkId, reqEditors ...RequestEditorFn) (*RemoveGatewayResponse, error)
@@ -1190,6 +2029,150 @@ type ClientWithResponsesInterface interface {
 	CreateSubnetWithBodyWithResponse(ctx context.Context, networkId NetworkId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateSubnetResponse, error)
 
 	CreateSubnetWithResponse(ctx context.Context, networkId NetworkId, body CreateSubnetJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateSubnetResponse, error)
+}
+
+type DeleteAppServiceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *Job
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
+	JSON500      *InternalServerError
+	JSON501      *NotImplemented
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAppServiceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAppServiceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r DeleteAppServiceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type GetAppServiceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppService
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON422      *UnprocessableEntity
+	JSON500      *InternalServerError
+	JSON501      *NotImplemented
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAppServiceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAppServiceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetAppServiceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type RemoveAppServiceExposureResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *Job
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
+	JSON500      *InternalServerError
+	JSON501      *NotImplemented
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveAppServiceExposureResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveAppServiceExposureResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r RemoveAppServiceExposureResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ExposeAppServiceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *Job
+	JSON400      *BadRequest
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
+	JSON500      *InternalServerError
+	JSON501      *NotImplemented
+}
+
+// Status returns HTTPResponse.Status
+func (r ExposeAppServiceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExposeAppServiceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ExposeAppServiceResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
 }
 
 type ListCIDRAllocationsResponse struct {
@@ -1357,6 +2340,78 @@ func (r GetNetworkProvisioningStatusResponse) StatusCode() int {
 
 // ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
 func (r GetNetworkProvisioningStatusResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type ListAppServicesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AppServiceList
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON422      *UnprocessableEntity
+	JSON500      *InternalServerError
+	JSON501      *NotImplemented
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAppServicesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAppServicesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r ListAppServicesResponse) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
+type CreateAppServiceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON202      *Job
+	JSON400      *BadRequest
+	JSON401      *Unauthorized
+	JSON404      *NotFound
+	JSON409      *Conflict
+	JSON422      *UnprocessableEntity
+	JSON500      *InternalServerError
+	JSON501      *NotImplemented
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAppServiceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAppServiceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r CreateAppServiceResponse) ContentType() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Header.Get("Content-Type")
 	}
@@ -1572,6 +2627,50 @@ func (r CreateSubnetResponse) ContentType() string {
 	return ""
 }
 
+// DeleteAppServiceWithResponse request returning *DeleteAppServiceResponse
+func (c *ClientWithResponses) DeleteAppServiceWithResponse(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*DeleteAppServiceResponse, error) {
+	rsp, err := c.DeleteAppService(ctx, appServiceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAppServiceResponse(rsp)
+}
+
+// GetAppServiceWithResponse request returning *GetAppServiceResponse
+func (c *ClientWithResponses) GetAppServiceWithResponse(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*GetAppServiceResponse, error) {
+	rsp, err := c.GetAppService(ctx, appServiceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAppServiceResponse(rsp)
+}
+
+// RemoveAppServiceExposureWithResponse request returning *RemoveAppServiceExposureResponse
+func (c *ClientWithResponses) RemoveAppServiceExposureWithResponse(ctx context.Context, appServiceId AppServiceId, reqEditors ...RequestEditorFn) (*RemoveAppServiceExposureResponse, error) {
+	rsp, err := c.RemoveAppServiceExposure(ctx, appServiceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveAppServiceExposureResponse(rsp)
+}
+
+// ExposeAppServiceWithBodyWithResponse request with arbitrary body returning *ExposeAppServiceResponse
+func (c *ClientWithResponses) ExposeAppServiceWithBodyWithResponse(ctx context.Context, appServiceId AppServiceId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ExposeAppServiceResponse, error) {
+	rsp, err := c.ExposeAppServiceWithBody(ctx, appServiceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExposeAppServiceResponse(rsp)
+}
+
+func (c *ClientWithResponses) ExposeAppServiceWithResponse(ctx context.Context, appServiceId AppServiceId, body ExposeAppServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*ExposeAppServiceResponse, error) {
+	rsp, err := c.ExposeAppService(ctx, appServiceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExposeAppServiceResponse(rsp)
+}
+
 // ListCIDRAllocationsWithResponse request returning *ListCIDRAllocationsResponse
 func (c *ClientWithResponses) ListCIDRAllocationsWithResponse(ctx context.Context, params *ListCIDRAllocationsParams, reqEditors ...RequestEditorFn) (*ListCIDRAllocationsResponse, error) {
 	rsp, err := c.ListCIDRAllocations(ctx, params, reqEditors...)
@@ -1623,6 +2722,32 @@ func (c *ClientWithResponses) GetNetworkProvisioningStatusWithResponse(ctx conte
 		return nil, err
 	}
 	return ParseGetNetworkProvisioningStatusResponse(rsp)
+}
+
+// ListAppServicesWithResponse request returning *ListAppServicesResponse
+func (c *ClientWithResponses) ListAppServicesWithResponse(ctx context.Context, networkId NetworkId, params *ListAppServicesParams, reqEditors ...RequestEditorFn) (*ListAppServicesResponse, error) {
+	rsp, err := c.ListAppServices(ctx, networkId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAppServicesResponse(rsp)
+}
+
+// CreateAppServiceWithBodyWithResponse request with arbitrary body returning *CreateAppServiceResponse
+func (c *ClientWithResponses) CreateAppServiceWithBodyWithResponse(ctx context.Context, networkId NetworkId, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAppServiceResponse, error) {
+	rsp, err := c.CreateAppServiceWithBody(ctx, networkId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppServiceResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAppServiceWithResponse(ctx context.Context, networkId NetworkId, body CreateAppServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAppServiceResponse, error) {
+	rsp, err := c.CreateAppService(ctx, networkId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAppServiceResponse(rsp)
 }
 
 // RemoveGatewayWithResponse request returning *RemoveGatewayResponse
@@ -1693,6 +2818,278 @@ func (c *ClientWithResponses) CreateSubnetWithResponse(ctx context.Context, netw
 		return nil, err
 	}
 	return ParseCreateSubnetResponse(rsp)
+}
+
+// ParseDeleteAppServiceResponse parses an HTTP response from a DeleteAppServiceWithResponse call
+func ParseDeleteAppServiceResponse(rsp *http.Response) (*DeleteAppServiceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAppServiceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Job
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest NotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAppServiceResponse parses an HTTP response from a GetAppServiceWithResponse call
+func ParseGetAppServiceResponse(rsp *http.Response) (*GetAppServiceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAppServiceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppService
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest NotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveAppServiceExposureResponse parses an HTTP response from a RemoveAppServiceExposureWithResponse call
+func ParseRemoveAppServiceExposureResponse(rsp *http.Response) (*RemoveAppServiceExposureResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveAppServiceExposureResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Job
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest NotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseExposeAppServiceResponse parses an HTTP response from a ExposeAppServiceWithResponse call
+func ParseExposeAppServiceResponse(rsp *http.Response) (*ExposeAppServiceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExposeAppServiceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Job
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest NotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
 }
 
 // ParseListCIDRAllocationsResponse parses an HTTP response from a ListCIDRAllocationsWithResponse call
@@ -1966,6 +3363,142 @@ func ParseGetNetworkProvisioningStatusResponse(rsp *http.Response) (*GetNetworkP
 			return nil, err
 		}
 		response.JSON500 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAppServicesResponse parses an HTTP response from a ListAppServicesWithResponse call
+func ParseListAppServicesResponse(rsp *http.Response) (*ListAppServicesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAppServicesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AppServiceList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest NotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAppServiceResponse parses an HTTP response from a CreateAppServiceWithResponse call
+func ParseCreateAppServiceResponse(rsp *http.Response) (*CreateAppServiceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAppServiceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 202:
+		var dest Job
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON202 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest BadRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 404:
+		var dest NotFound
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON404 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest Conflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 422:
+		var dest UnprocessableEntity
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON422 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 500:
+		var dest InternalServerError
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON500 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 501:
+		var dest NotImplemented
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON501 = &dest
 
 	}
 

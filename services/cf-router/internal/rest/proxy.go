@@ -135,6 +135,7 @@ func DefaultRouteTable(cfAccountsURL, cfProvisionerURL string) RouteTable {
 		{PathPrefix: "/v1/accounts", TargetURL: cfAccountsURL, Description: "Account APIs (CF-Accounts)"},
 		{PathPrefix: "/v1/tenants", TargetURL: cfAccountsURL, Description: "Tenant APIs (CF-Accounts)"},
 		{PathPrefix: "/v1/networks", TargetURL: cfProvisionerURL, Description: "Network APIs (CF-Provisioner)"},
+		{PathPrefix: "/v1/app-services", TargetURL: cfProvisionerURL, Description: "App Service APIs (CF-Provisioner)"},
 		{PathPrefix: "/v1/gateways", TargetURL: cfProvisionerURL, Description: "Gateway APIs (CF-Provisioner)"},
 		{PathPrefix: "/v1/jobs", TargetURL: cfProvisionerURL, Description: "Async job APIs (CF-Provisioner)"},
 	}

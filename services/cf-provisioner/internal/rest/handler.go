@@ -36,6 +36,13 @@ func badRequest(ctx context.Context, message string) generated.BadRequestJSONRes
 	}))
 }
 
+func notImplemented(ctx context.Context, message string) generated.NotImplementedJSONResponse {
+	return generated.NotImplementedJSONResponse(withRequestID(ctx, generated.Error{
+		Code:    "NOT_IMPLEMENTED",
+		Message: message,
+	}))
+}
+
 func trustedProvisionContext(ctx context.Context) TrustedProvisionContext {
 	r := HTTPRequestFromContext(ctx)
 	if r == nil {
@@ -288,6 +295,54 @@ func mapGetGatewayStatusError(ctx context.Context, err error) generated.GetGatew
 	default:
 		return generated.GetGatewayStatus500JSONResponse{InternalServerErrorJSONResponse: generated.InternalServerErrorJSONResponse(body)}
 	}
+}
+
+func (h *Handler) CreateAppService(ctx context.Context, request generated.CreateAppServiceRequestObject) (generated.CreateAppServiceResponseObject, error) {
+	_ = h
+	_ = request
+	return generated.CreateAppService501JSONResponse{
+		NotImplementedJSONResponse: notImplemented(ctx, "app service creation is not implemented yet"),
+	}, nil
+}
+
+func (h *Handler) ListAppServices(ctx context.Context, request generated.ListAppServicesRequestObject) (generated.ListAppServicesResponseObject, error) {
+	_ = h
+	_ = request
+	return generated.ListAppServices501JSONResponse{
+		NotImplementedJSONResponse: notImplemented(ctx, "app service listing is not implemented yet"),
+	}, nil
+}
+
+func (h *Handler) GetAppService(ctx context.Context, request generated.GetAppServiceRequestObject) (generated.GetAppServiceResponseObject, error) {
+	_ = h
+	_ = request
+	return generated.GetAppService501JSONResponse{
+		NotImplementedJSONResponse: notImplemented(ctx, "app service status retrieval is not implemented yet"),
+	}, nil
+}
+
+func (h *Handler) DeleteAppService(ctx context.Context, request generated.DeleteAppServiceRequestObject) (generated.DeleteAppServiceResponseObject, error) {
+	_ = h
+	_ = request
+	return generated.DeleteAppService501JSONResponse{
+		NotImplementedJSONResponse: notImplemented(ctx, "app service deletion is not implemented yet"),
+	}, nil
+}
+
+func (h *Handler) ExposeAppService(ctx context.Context, request generated.ExposeAppServiceRequestObject) (generated.ExposeAppServiceResponseObject, error) {
+	_ = h
+	_ = request
+	return generated.ExposeAppService501JSONResponse{
+		NotImplementedJSONResponse: notImplemented(ctx, "app service exposure is not implemented yet"),
+	}, nil
+}
+
+func (h *Handler) RemoveAppServiceExposure(ctx context.Context, request generated.RemoveAppServiceExposureRequestObject) (generated.RemoveAppServiceExposureResponseObject, error) {
+	_ = h
+	_ = request
+	return generated.RemoveAppServiceExposure501JSONResponse{
+		NotImplementedJSONResponse: notImplemented(ctx, "app service exposure removal is not implemented yet"),
+	}, nil
 }
 
 func (h *Handler) ProvisionGateway(ctx context.Context, request generated.ProvisionGatewayRequestObject) (generated.ProvisionGatewayResponseObject, error) {

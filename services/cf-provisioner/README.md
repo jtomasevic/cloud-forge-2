@@ -23,6 +23,7 @@ platform traffic) or other control-plane components—not end-user browsers.
 | **Gateway** | Async attach/detach of `HTTPRoute` for public ingress; status via `GET …/gateway`. |
 | **Jobs** | Durable async state in Scylla (`provisioning_jobs` + by-network index). |
 | **Subnets** | Durable private/public subnet metadata in ScyllaDB for app-service placement validation. |
+| **App Services** | Contract for Docker workload placement under tenant networks, explicit internet-gateway exposure, and required public OpenAPI/Swagger metadata for exposed services. Runtime reconciliation is planned separately. |
 
 Contract and JSON models: [`api/cf-provisioner/v1/openapi.yaml`](../../api/cf-provisioner/v1/openapi.yaml).
 

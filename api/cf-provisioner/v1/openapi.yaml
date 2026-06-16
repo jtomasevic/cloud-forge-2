@@ -116,6 +116,280 @@ components:
           type: string
           format: date-time
 
+    AppServiceRuntime:
+      type: object
+      required: [serviceType, resources]
+      description: >
+        Runtime declaration for a CloudForge app service. The MVP supports
+        immutable image references and local-development Docker builds; exactly
+        one of `image` or `build` must be supplied by callers. Production callers
+        should prefer immutable registry image tags or digests.
+      properties:
+        serviceType:
+          type: string
+          enum: [rest, grpc, ui, worker, tcp, container]
+          description: >
+            Workload shape. `rest`, `grpc`, `ui`, and `tcp` services can declare
+            ports. `worker` services may declare no ports and cannot be exposed
+            through an internet gateway.
+        image:
+          type: string
+          description: >
+            Container image reference to deploy. Production usage should pass an
+            immutable tag or digest. Either `image` or `build` is required.
+        build:
+          $ref: "#/components/schemas/AppServiceBuild"
+        command:
+          type: array
+          items:
+            type: string
+          description: Optional container entrypoint override.
+        args:
+          type: array
+          items:
+            type: string
+          description: Optional container command arguments.
+        resources:
+          $ref: "#/components/schemas/AppServiceResources"
+        env:
+          type: array
+          default: []
+          items:
+            $ref: "#/components/schemas/AppServiceEnvVar"
+        ports:
+          type: array
+          default: []
+          items:
+            $ref: "#/components/schemas/AppServicePort"
+        replicas:
+          type: integer
+          minimum: 1
+          default: 1
+          description: Desired replica count. The MVP may cap this to one.
+
+    AppServiceBuild:
+      type: object
+      required: [context, dockerfile]
+      description: >
+        Local-development Docker build metadata. Production control-plane callers
+        should pass a registry `image` instead of arbitrary build context until a
+        secure build service exists.
+      properties:
+        context:
+          type: string
+          description: Build context path or source reference understood by the caller/build adapter.
+        dockerfile:
+          type: string
+          default: Dockerfile
+          description: Dockerfile path relative to `context`.
+        target:
+          type: string
+          description: Optional Docker build target stage.
+        args:
+          type: object
+          additionalProperties:
+            type: string
+          description: Optional Docker build arguments.
+
+    AppServiceResources:
+      type: object
+      required: [cpu, memory]
+      description: >
+        Required resource limits for multi-tenant safety. If a later platform
+        plan allows omitted values, CF-Provisioner must fill explicit defaults
+        before creating Kubernetes workloads.
+      properties:
+        cpu:
+          type: string
+          description: CPU request/limit such as `250m`, `500m`, or `1`.
+        memory:
+          type: string
+          description: Memory request/limit such as `256Mi`, `512Mi`, or `1Gi`.
+
+    AppServiceEnvVar:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          pattern: "^[A-Za-z_][A-Za-z0-9_]*$"
+        value:
+          type: string
+          description: Plaintext value. Use `secretRef` for values that must not be stored inline.
+        secretRef:
+          type: string
+          description: Optional secret reference resolved by a future secret adapter.
+
+    AppServicePort:
+      type: object
+      required: [name, containerPort, protocol]
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+          description: Stable port name used by exposure `portRef`.
+        containerPort:
+          type: integer
+          minimum: 1
+          maximum: 65535
+        protocol:
+          type: string
+          enum: [HTTP, GRPC, TCP]
+          description: >
+            MVP public routing supports HTTP through Gateway API HTTPRoute.
+            GRPC and TCP exposure must be rejected until a compatible route and
+            documentation adapter exist.
+
+    AppServiceSwagger:
+      type: object
+      required: [publicPath, openapiPath]
+      anyOf:
+        - required: [specUrl]
+        - required: [inlineSpec]
+      description: >
+        Public documentation metadata required for every app service exposed
+        through an internet gateway. HTTP/REST services must provide either a
+        reachable OpenAPI document URL or an inline OpenAPI document. If a
+        protocol cannot provide an OpenAPI-compatible document yet, internet
+        gateway exposure must be rejected until a protocol-specific documentation
+        adapter exists.
+      properties:
+        specUrl:
+          type: string
+          format: uri
+          description: URL where CF can fetch the service OpenAPI document.
+        inlineSpec:
+          type: object
+          additionalProperties: true
+          description: Inline OpenAPI document object.
+        publicPath:
+          type: string
+          default: /swagger/
+          description: Public Swagger UI path routed for the exposed service.
+        openapiPath:
+          type: string
+          default: /openapi.json
+          description: Public OpenAPI JSON path routed for the exposed service.
+
+    AppServiceExposure:
+      type: object
+      required: [type, host, portRef, swagger]
+      description: >
+        Explicit internet gateway exposure request. Public subnet placement only
+        makes an app service eligible for public routing; it does not create a
+        public route by itself. Private subnet app services must be rejected when
+        this exposure is requested. `portRef` must reference one of the declared
+        runtime ports, the network must have an active internet gateway, and
+        public documentation metadata is mandatory.
+      properties:
+        type:
+          type: string
+          enum: [InternetGateway]
+        host:
+          type: string
+          description: Public hostname to route through the internet gateway.
+        portRef:
+          type: string
+          description: Runtime port name to expose. Must match `runtime.ports[].name`.
+        tlsEnabled:
+          type: boolean
+          default: true
+        swagger:
+          $ref: "#/components/schemas/AppServiceSwagger"
+
+    AppServiceStatus:
+      type: object
+      required: [phase]
+      properties:
+        phase:
+          type: string
+          enum: [creating, running, updating, deleting, failed]
+        desiredReplicas:
+          type: integer
+          minimum: 0
+        readyReplicas:
+          type: integer
+          minimum: 0
+        internalDNSName:
+          type: string
+          description: DNS name reachable inside the tenant private network.
+        publicEndpoint:
+          type: string
+          nullable: true
+          description: Public URL when internet gateway exposure is active.
+        failureReason:
+          type: string
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+
+    AppService:
+      type: object
+      required: [id, networkId, subnetId, name, runtime, status, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        networkId:
+          type: string
+          format: uuid
+        subnetId:
+          type: string
+          format: uuid
+          description: >
+            Subnet where the app service is placed. The subnet must exist, must
+            belong to `networkId`, and its public/private type controls whether
+            internet gateway exposure can be requested.
+        name:
+          type: string
+          pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        runtime:
+          $ref: "#/components/schemas/AppServiceRuntime"
+        exposure:
+          nullable: true
+          allOf:
+            - $ref: "#/components/schemas/AppServiceExposure"
+        status:
+          $ref: "#/components/schemas/AppServiceStatus"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateAppServiceRequest:
+      type: object
+      required: [name, subnetId, runtime]
+      description: >
+        Creates an app service in an active private network. CF-Provisioner must
+        validate that the network is active, that `subnetId` exists and belongs
+        to the path `networkId`, that resource limits are present, and that any
+        requested internet gateway exposure targets a declared runtime port and
+        a public subnet. Public subnet placement alone never creates public
+        exposure.
+      properties:
+        name:
+          type: string
+          pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+        subnetId:
+          type: string
+          format: uuid
+        runtime:
+          $ref: "#/components/schemas/AppServiceRuntime"
+        exposure:
+          $ref: "#/components/schemas/AppServiceExposure"
+
+    AppServiceList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/AppService"
+
     Job:
       type: object
       required: [id, networkId, type, status, createdAt]
@@ -126,6 +400,10 @@ components:
         networkId:
           type: string
           format: uuid
+        appServiceId:
+          type: string
+          format: uuid
+          description: App service affected by this job, when the job type is app-service related.
         type:
           type: string
           enum:
@@ -134,6 +412,10 @@ components:
             - provision_gateway
             - remove_gateway
             - provision_subnet
+            - create_app_service
+            - delete_app_service
+            - expose_app_service
+            - remove_app_service_exposure
         status:
           type: string
           enum: [pending, running, succeeded, failed]
@@ -257,6 +539,14 @@ components:
         type: string
         format: uuid
       description: Unique async job identifier.
+    appServiceId:
+      name: appServiceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique app service identifier.
     limit:
       name: limit
       in: query
@@ -308,6 +598,12 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    NotImplemented:
+      description: The route is defined in the contract but not implemented by this service build yet.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
     UnprocessableEntity:
       description: >
         The request was well-formed but could not be applied (for example
@@ -326,6 +622,8 @@ tags:
     description: Async provisioning job status and listing.
   - name: Subnets
     description: Subnets within a provisioned network.
+  - name: AppServices
+    description: Application workload services deployed into tenant private networks.
   - name: CIDR
     description: Internal CIDR allocation visibility for operators.
 
@@ -597,6 +895,197 @@ paths:
           $ref: "#/components/responses/UnprocessableEntity"
         "500":
           $ref: "#/components/responses/InternalServerError"
+
+  /v1/networks/{networkId}/app-services:
+    parameters:
+      - $ref: "#/components/parameters/networkId"
+    post:
+      operationId: createAppService
+      summary: Create an app service in a network
+      description: >
+        Starts asynchronous creation of a CloudForge app service inside an active
+        private network. The target subnet must exist and belong to `networkId`.
+        Private subnet placement is always internal-only; public subnet placement
+        only makes the service eligible for internet gateway exposure and does
+        not create a public route by itself. If `exposure.type` is
+        `InternetGateway`, the subnet must be public, `portRef` must reference a
+        declared runtime port, and Swagger/OpenAPI documentation metadata is
+        required before a public route may be created.
+      tags: [AppServices]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAppServiceRequest"
+      responses:
+        "202":
+          description: App service creation accepted; job created for background work.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+    get:
+      operationId: listAppServices
+      summary: List app services in a network
+      description: Returns app services placed in the network.
+      tags: [AppServices]
+      parameters:
+        - $ref: "#/components/parameters/limit"
+        - $ref: "#/components/parameters/offset"
+      responses:
+        "200":
+          description: App services belonging to the network.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppServiceList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+
+  /v1/app-services/{appServiceId}:
+    parameters:
+      - $ref: "#/components/parameters/appServiceId"
+    get:
+      operationId: getAppService
+      summary: Get app service status
+      description: Returns runtime, placement, exposure, and readiness status for one app service.
+      tags: [AppServices]
+      responses:
+        "200":
+          description: App service record.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppService"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+    delete:
+      operationId: deleteAppService
+      summary: Delete an app service
+      description: >
+        Starts asynchronous deletion of the workload, internal service, optional
+        public route, and related Cilium policy. Returns a `Job` that callers
+        poll until completion.
+      tags: [AppServices]
+      responses:
+        "202":
+          description: App service deletion accepted; job created for background work.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+
+  /v1/app-services/{appServiceId}/exposure:
+    parameters:
+      - $ref: "#/components/parameters/appServiceId"
+    post:
+      operationId: exposeAppService
+      summary: Expose an app service through an internet gateway
+      description: >
+        Starts asynchronous internet gateway exposure for an existing app
+        service. The app service must be placed in a public subnet; private
+        subnet services must be rejected. The exposed `portRef` must reference a
+        declared runtime port. Swagger/OpenAPI documentation metadata is
+        mandatory so every public service has a discoverable public Swagger page
+        and OpenAPI document. HTTP/REST is the MVP public protocol; protocols
+        without a documentation adapter must be rejected.
+      tags: [AppServices]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AppServiceExposure"
+      responses:
+        "202":
+          description: Exposure accepted; job created for background work.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
+    delete:
+      operationId: removeAppServiceExposure
+      summary: Remove app service internet gateway exposure
+      description: >
+        Starts asynchronous removal of the public route and related ingress
+        policy while leaving the app service running inside the private network.
+      tags: [AppServices]
+      responses:
+        "202":
+          description: Exposure removal accepted; job created for background work.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+        "501":
+          $ref: "#/components/responses/NotImplemented"
 
   /v1/cidr/allocations:
     get:
