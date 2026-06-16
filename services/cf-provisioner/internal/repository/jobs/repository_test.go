@@ -32,3 +32,23 @@ func TestJobStatusConstants(t *testing.T) {
 		t.Fatal("job status constants drifted from provisioning_jobs.status text values")
 	}
 }
+
+func TestAppServiceJobTypeConstants(t *testing.T) {
+	got := []JobType{
+		JobTypeCreateAppService,
+		JobTypeDeleteAppService,
+		JobTypeExposeAppService,
+		JobTypeRemoveAppServiceExposure,
+	}
+	want := []string{
+		"create_app_service",
+		"delete_app_service",
+		"expose_app_service",
+		"remove_app_service_exposure",
+	}
+	for i := range want {
+		if string(got[i]) != want[i] {
+			t.Fatalf("app-service job type %d: got %q want %q", i, got[i], want[i])
+		}
+	}
+}

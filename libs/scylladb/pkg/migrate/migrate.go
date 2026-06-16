@@ -122,6 +122,7 @@ func RunMigrations(ctx context.Context, cfg MigrationConfig) error {
 // statement. This handles files that contain multiple statements separated by
 // semicolons (the standard CQL convention).
 func splitStatements(script string) []string {
+	script = stripLineComments(script)
 	parts := strings.Split(script, ";")
 	result := make([]string, 0, len(parts))
 	for _, p := range parts {
@@ -130,6 +131,18 @@ func splitStatements(script string) []string {
 		}
 	}
 	return result
+}
+
+func stripLineComments(script string) string {
+	var b strings.Builder
+	for _, line := range strings.Split(script, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "--") {
+			continue
+		}
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
 }
 
 func isUseStatement(stmt string) bool {

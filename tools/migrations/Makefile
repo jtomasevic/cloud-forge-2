@@ -27,7 +27,7 @@ KEYSPACE ?= cloudforge
 # Path to migration .cql files (relative to this directory).
 SCRIPTS_DIR ?= ./scripts
 
-.PHONY: help build migrate tidy fmt vet
+.PHONY: help build migrate test tidy fmt vet
 
 # -----------------------------------------------------------------------------
 # help — List documented targets (lines starting with ##).
@@ -51,6 +51,10 @@ build:
 migrate:
 	@echo "Applying migrations: hosts=$(HOSTS) keyspace=$(KEYSPACE) scripts=$(SCRIPTS_DIR)"
 	go run . -hosts "$(HOSTS)" -keyspace "$(KEYSPACE)" -scripts-dir "$(SCRIPTS_DIR)"
+
+## test: run migration CLI and script-shape unit tests (no ScyllaDB required)
+test:
+	go test ./...
 
 # -----------------------------------------------------------------------------
 # tidy / fmt / vet — Standard Go maintenance for this module only.

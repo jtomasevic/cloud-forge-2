@@ -7,7 +7,7 @@ The layer is **split by dependency type** (see [`docs/plan/13.CFProvisionerInfra
 | Track | Packages | Backing systems |
 |-------|-----------|-----------------|
 | **Infrastructure** (Task 13) | [`vcluster/`](vcluster/), [`cilium/`](cilium/), [`gateway/`](gateway/), [`kubeconfig/`](kubeconfig/) | Host cluster APIs, vCluster CLI, OpenBao |
-| **State** (Tasks 14, 25) | [`cidr/`](cidr/), [`jobs/`](jobs/), [`subnets/`](subnets/) | ScyllaDB (`cidr_allocations`, `provisioning_jobs`, subnet tables, and indexes) |
+| **State** (Tasks 14, 25, 28) | [`cidr/`](cidr/), [`jobs/`](jobs/), [`subnets/`](subnets/), future `appservices/` | ScyllaDB (`cidr_allocations`, `provisioning_jobs`, subnet tables, app-service tables, and indexes) |
 
 ---
 
@@ -31,7 +31,7 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | [`gateway/`](gateway/) | Create, read, and delete `gateway.networking.k8s.io` `HTTPRoute` resources for Envoy Gateway. |
 | [`kubeconfig/`](kubeconfig/) | Store, load, and revoke tenant kubeconfigs via `libs/openbao/pkg/client` helpers only (no direct Vault API usage here). |
 | [`cidr/`](cidr/) | Scylla-backed pod/service CIDR allocation (`cidr_allocations`), sequential auto-pool from `10.0.0.0/8` + `172.16.0.0/12`. |
-| [`jobs/`](jobs/) | Async provisioning job rows (`provisioning_jobs` + `provisioning_jobs_by_network` denormalized listing). |
+| [`jobs/`](jobs/) | Async provisioning job rows (`provisioning_jobs` + `provisioning_jobs_by_network` denormalized listing), including app-service lifecycle job types. |
 | [`subnets/`](subnets/) | Durable private/public subnet metadata and indexes for network-scoped listing plus duplicate CIDR detection. |
 
 ### Files per package (convention)
@@ -126,6 +126,17 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | `Create(ctx, params)` | Insert primary + denormalized subnet rows; rejects duplicate canonical CIDR within the network. |
 | `GetByID(ctx, networkID, subnetID)` | Load a subnet by id and verify it belongs to the requested network. |
 | `ListByNetwork(ctx, networkID)` | Read the network-scoped listing index for `GET /v1/networks/{id}/subnets`. |
+
+### CF App Service state — migration-only until Task 29
+
+Task 28 adds Scylla tables for app-service desired state before the repository package exists:
+
+| Table | Purpose |
+|-------|---------|
+| `app_services` | Primary durable workload record with tenant/network/subnet placement, runtime resources, JSON-encoded environment/port/exposure/Swagger fragments, and timestamps. |
+| `app_services_by_network` | Denormalized listing row for `GET /v1/networks/{networkId}/app-services`. |
+| `app_service_exposures_by_host` | Public-host lookup for internet-gateway exposure and Swagger/OpenAPI metadata. |
+| `app_service_jobs_by_app_service` | App-service lifecycle job correlation while `provisioning_jobs` remains the generic polling table. |
 
 ---
 
