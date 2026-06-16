@@ -6,7 +6,7 @@ The layer is **split by dependency type** (see [`docs/plan/13.CFProvisionerInfra
 
 | Track | Packages | Backing systems |
 |-------|-----------|-----------------|
-| **Infrastructure** (Task 13) | [`vcluster/`](vcluster/), [`cilium/`](cilium/), [`gateway/`](gateway/), [`kubeconfig/`](kubeconfig/) | Host cluster APIs, vCluster CLI, OpenBao |
+| **Infrastructure** (Tasks 13, 30) | [`vcluster/`](vcluster/), [`cilium/`](cilium/), [`gateway/`](gateway/), [`kubeconfig/`](kubeconfig/), [`workloads/`](workloads/) | Host cluster APIs, tenant vCluster APIs, vCluster CLI, OpenBao |
 | **State** (Tasks 14, 25, 28, 29) | [`cidr/`](cidr/), [`jobs/`](jobs/), [`subnets/`](subnets/), [`appservices/`](appservices/) | ScyllaDB (`cidr_allocations`, `provisioning_jobs`, subnet tables, app-service tables, and indexes) |
 
 ---
@@ -30,6 +30,7 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | [`cilium/`](cilium/) | Apply and remove `cilium.io/v2` `CiliumNetworkPolicy` objects (default deny + internet ingress). |
 | [`gateway/`](gateway/) | Create, read, and delete `gateway.networking.k8s.io` `HTTPRoute` resources for Envoy Gateway. |
 | [`kubeconfig/`](kubeconfig/) | Store, load, and revoke tenant kubeconfigs via `libs/openbao/pkg/client` helpers only (no direct Vault API usage here). |
+| [`workloads/`](workloads/) | Apply and observe tenant vCluster `Deployment`/`Service` objects for CF App Service runtime. |
 | [`cidr/`](cidr/) | Scylla-backed pod/service CIDR allocation (`cidr_allocations`), sequential auto-pool from `10.0.0.0/8` + `172.16.0.0/12`. |
 | [`jobs/`](jobs/) | Async provisioning job rows (`provisioning_jobs` + `provisioning_jobs_by_network` denormalized listing), including app-service lifecycle job types. |
 | [`subnets/`](subnets/) | Durable private/public subnet metadata and indexes for network-scoped listing plus duplicate CIDR detection. |
@@ -37,7 +38,7 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 
 ### Files per package (convention)
 
-**Infrastructure packages** (`vcluster`, `cilium`, `gateway`, `kubeconfig`):
+**Infrastructure packages** (`vcluster`, `cilium`, `gateway`, `kubeconfig`, `workloads`):
 
 | File | Role |
 |------|------|
@@ -102,6 +103,14 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | `Load(ctx, tenantID)` | Delegates to `openbao.LoadKubeconfig`; maps `ErrSecretNotFound` to `ErrKubeconfigNotFound`. |
 | `Revoke(ctx, tenantID)` | Delegates to `openbao.RevokeKubeconfig`. |
 
+### `workloads` — [`WorkloadClient`](workloads/api.go)
+
+| Method | Description |
+|--------|-------------|
+| `Apply(ctx, params)` | Create/update tenant vCluster Deployment and optional ClusterIP Service from app-service runtime intent. |
+| `Get(ctx, namespace, name)` | Read Deployment conditions/readiness plus Service presence for status reporting. |
+| `Delete(ctx, namespace, name)` | Delete Service and Deployment; missing objects are success for retry-safe cleanup. |
+
 ### `cidr` — [`CIDRRepository`](cidr/api.go)
 
 | Method | Description |
@@ -162,6 +171,7 @@ go build ./internal/repository/vcluster/ \
           ./internal/repository/cilium/ \
           ./internal/repository/gateway/ \
           ./internal/repository/kubeconfig/ \
+          ./internal/repository/workloads/ \
           ./internal/repository/cidr/ \
           ./internal/repository/jobs/ \
           ./internal/repository/subnets/
