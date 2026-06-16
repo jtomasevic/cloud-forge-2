@@ -43,6 +43,14 @@ func notImplemented(ctx context.Context, message string) generated.NotImplemente
 	}))
 }
 
+func appServiceNotImplemented(ctx context.Context, operation string) generated.NotImplementedJSONResponse {
+	// Task 27 is deliberately contract-first: the OpenAPI routes, generated server interface, and
+	// generated client need to exist before Task 28+ add durable app-service state, Kubernetes workload
+	// reconciliation, and Gateway/Cilium exposure wiring. A typed 501 makes the routes discoverable
+	// without implying that workload placement or public routing is live.
+	return notImplemented(ctx, "app service "+operation+" is not implemented yet")
+}
+
 func trustedProvisionContext(ctx context.Context) TrustedProvisionContext {
 	r := HTTPRequestFromContext(ctx)
 	if r == nil {
@@ -301,7 +309,7 @@ func (h *Handler) CreateAppService(ctx context.Context, request generated.Create
 	_ = h
 	_ = request
 	return generated.CreateAppService501JSONResponse{
-		NotImplementedJSONResponse: notImplemented(ctx, "app service creation is not implemented yet"),
+		NotImplementedJSONResponse: appServiceNotImplemented(ctx, "creation"),
 	}, nil
 }
 
@@ -309,7 +317,7 @@ func (h *Handler) ListAppServices(ctx context.Context, request generated.ListApp
 	_ = h
 	_ = request
 	return generated.ListAppServices501JSONResponse{
-		NotImplementedJSONResponse: notImplemented(ctx, "app service listing is not implemented yet"),
+		NotImplementedJSONResponse: appServiceNotImplemented(ctx, "listing"),
 	}, nil
 }
 
@@ -317,7 +325,7 @@ func (h *Handler) GetAppService(ctx context.Context, request generated.GetAppSer
 	_ = h
 	_ = request
 	return generated.GetAppService501JSONResponse{
-		NotImplementedJSONResponse: notImplemented(ctx, "app service status retrieval is not implemented yet"),
+		NotImplementedJSONResponse: appServiceNotImplemented(ctx, "status retrieval"),
 	}, nil
 }
 
@@ -325,7 +333,7 @@ func (h *Handler) DeleteAppService(ctx context.Context, request generated.Delete
 	_ = h
 	_ = request
 	return generated.DeleteAppService501JSONResponse{
-		NotImplementedJSONResponse: notImplemented(ctx, "app service deletion is not implemented yet"),
+		NotImplementedJSONResponse: appServiceNotImplemented(ctx, "deletion"),
 	}, nil
 }
 
@@ -333,7 +341,7 @@ func (h *Handler) ExposeAppService(ctx context.Context, request generated.Expose
 	_ = h
 	_ = request
 	return generated.ExposeAppService501JSONResponse{
-		NotImplementedJSONResponse: notImplemented(ctx, "app service exposure is not implemented yet"),
+		NotImplementedJSONResponse: appServiceNotImplemented(ctx, "exposure"),
 	}, nil
 }
 
@@ -341,7 +349,7 @@ func (h *Handler) RemoveAppServiceExposure(ctx context.Context, request generate
 	_ = h
 	_ = request
 	return generated.RemoveAppServiceExposure501JSONResponse{
-		NotImplementedJSONResponse: notImplemented(ctx, "app service exposure removal is not implemented yet"),
+		NotImplementedJSONResponse: appServiceNotImplemented(ctx, "exposure removal"),
 	}, nil
 }
 
