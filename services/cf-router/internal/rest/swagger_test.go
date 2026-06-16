@@ -125,6 +125,15 @@ func TestSwaggerRouterServesProvisionerSpecThroughRouter(t *testing.T) {
 	if _, ok := spec.Paths["/v1/networks"]; !ok {
 		t.Fatal("provisioner spec missing /v1/networks")
 	}
+	if _, ok := spec.Paths["/v1/networks/{networkId}/app-services"]; !ok {
+		t.Fatal("provisioner spec missing network-scoped app-service collection")
+	}
+	if _, ok := spec.Paths["/v1/app-services/{appServiceId}"]; !ok {
+		t.Fatal("provisioner spec missing app-service item route")
+	}
+	if _, ok := spec.Paths["/v1/app-services/{appServiceId}/exposure"]; !ok {
+		t.Fatal("provisioner spec missing app-service exposure route")
+	}
 }
 
 func TestSwaggerRouterUsesRelativeAPIServerURL(t *testing.T) {

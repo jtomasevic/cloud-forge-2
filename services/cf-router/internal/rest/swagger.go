@@ -37,9 +37,12 @@ var publicSpecs = map[string]publicSpecConfig{
 		Proxied:         true,
 	},
 	"cf-provisioner": {
-		ID:              "cf-provisioner",
-		SourcePath:      "api/cf-provisioner/v1/openapi.yaml",
-		AllowedPrefixes: []string{"/v1/networks", "/v1/jobs"},
+		ID:         "cf-provisioner",
+		SourcePath: "api/cf-provisioner/v1/openapi.yaml",
+		// CF App Service has a split route shape: collection operations are nested under
+		// /v1/networks/{networkId}/app-services, while item and exposure operations live under
+		// /v1/app-services/{appServiceId}. Both prefixes must be preserved in the public docs.
+		AllowedPrefixes: []string{"/v1/networks", "/v1/app-services", "/v1/jobs"},
 		Proxied:         true,
 	},
 }

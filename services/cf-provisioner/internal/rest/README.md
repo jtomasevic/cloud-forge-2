@@ -14,6 +14,8 @@ responses. It is not the place for infrastructure logic; that stays in `internal
 - **Gateways**: provision and remove internet ingress (`POST` / `DELETE …/gateway`), read status
   (`GET …/gateway`).
 - **Subnets**: create and list durable private/public subnet metadata.
+- **App Services**: generated CF App Service routes are mounted and return typed `501` responses
+  until later tasks add app-service persistence, workload reconciliation, and exposure orchestration.
 - **CIDR**: operator listing of allocations (`GET /v1/cidr/allocations`).
 - Enforces **internal-only** access via header `X-CF-Internal-Secret` (see [server.go](server.go)).
 
@@ -59,6 +61,8 @@ cd services/cf-provisioner && go generate ./...
 - **Poll**: `GET /v1/jobs/{jobId}` returns job status and optional error message.
 - **Status**: `GET /v1/networks/{id}` returns provisioning state and CIDRs when inferrable.
 - **Gateway**: Async job for attach/detach; `GET …/gateway` for route-backed status.
+- **App Services**: route stubs keep the OpenAPI server/client contract compiled while Task 28+
+  implements durable app-service state, Kubernetes workload objects, and Gateway/Cilium routing.
 - **Ops**: Paginated `GET /v1/cidr/allocations` and paginated network job lists.
 - **Errors**: Typed mapping including **422** for `PROVISIONING_FAILED` (see `errors.go`).
 
