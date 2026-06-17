@@ -78,17 +78,21 @@ Each subfolder is its **own Go package**. Prefer **no imports** between sibling 
 | Method | Description |
 |--------|-------------|
 | `ApplyDefaultDenyPolicy(ctx, vclusterNamespace, networkID)` | Create default-deny egress-to-cluster policy (idempotent if already exists). |
-| `ApplyIngressPolicy(ctx, params)` | Create world → port ingress policy for gateway exposure. |
+| `ApplyIngressPolicy(ctx, params)` | Create world → port ingress policy for the existing network gateway flow. |
+| `ApplyAppServiceIngressPolicy(ctx, params)` | Create/update world → app-service port policy scoped by tenant/network/subnet/app-service labels. |
 | `RemovePolicy(ctx, namespace, policyName)` | Delete policy; not found is treated as success. |
+| `RemoveAppServiceIngressPolicy(ctx, namespace, appServiceID)` | Delete the service-specific public ingress policy by deterministic app-service policy name. |
 | `GetPolicy(ctx, namespace, policyName)` | Return `PolicyInfo` with `Exists` false if absent. |
 
 ### `gateway` — [`GatewayClient`](gateway/api.go)
 
 | Method | Description |
 |--------|-------------|
-| `CreateHTTPRoute(ctx, params)` | Create `HTTPRoute`; on success re-reads status; parent Gateway comes from env (see below). |
+| `CreateHTTPRoute(ctx, params)` | Create/update generic `HTTPRoute`; parent Gateway comes from env (see below). |
+| `CreateAppServiceHTTPRoute(ctx, params)` | Create/update service-specific `HTTPRoute` with app backend plus Swagger/OpenAPI path rules. |
 | `GetHTTPRoute(ctx, namespace, name)` | Read route and map parent conditions to `HTTPRouteStatus`. |
 | `DeleteHTTPRoute(ctx, namespace, name)` | Delete route; not found is success. |
+| `DeleteAppServiceHTTPRoute(ctx, namespace, appServiceID)` | Delete the app-service route by deterministic app-service route name. |
 
 **Environment (Gateway parent attachment):**
 
