@@ -41,6 +41,21 @@ func (m *MockGatewayClient) EXPECT() *MockGatewayClientMockRecorder {
 	return m.recorder
 }
 
+// CreateAppServiceHTTPRoute mocks base method.
+func (m *MockGatewayClient) CreateAppServiceHTTPRoute(ctx context.Context, params gateway.AppServiceHTTPRouteParams) (gateway.HTTPRouteInfo, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateAppServiceHTTPRoute", ctx, params)
+	ret0, _ := ret[0].(gateway.HTTPRouteInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CreateAppServiceHTTPRoute indicates an expected call of CreateAppServiceHTTPRoute.
+func (mr *MockGatewayClientMockRecorder) CreateAppServiceHTTPRoute(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateAppServiceHTTPRoute", reflect.TypeOf((*MockGatewayClient)(nil).CreateAppServiceHTTPRoute), ctx, params)
+}
+
 // CreateHTTPRoute mocks base method.
 func (m *MockGatewayClient) CreateHTTPRoute(ctx context.Context, params gateway.HTTPRouteParams) (gateway.HTTPRouteInfo, error) {
 	m.ctrl.T.Helper()
@@ -54,6 +69,20 @@ func (m *MockGatewayClient) CreateHTTPRoute(ctx context.Context, params gateway.
 func (mr *MockGatewayClientMockRecorder) CreateHTTPRoute(ctx, params any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateHTTPRoute", reflect.TypeOf((*MockGatewayClient)(nil).CreateHTTPRoute), ctx, params)
+}
+
+// DeleteAppServiceHTTPRoute mocks base method.
+func (m *MockGatewayClient) DeleteAppServiceHTTPRoute(ctx context.Context, namespace, appServiceID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteAppServiceHTTPRoute", ctx, namespace, appServiceID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteAppServiceHTTPRoute indicates an expected call of DeleteAppServiceHTTPRoute.
+func (mr *MockGatewayClientMockRecorder) DeleteAppServiceHTTPRoute(ctx, namespace, appServiceID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAppServiceHTTPRoute", reflect.TypeOf((*MockGatewayClient)(nil).DeleteAppServiceHTTPRoute), ctx, namespace, appServiceID)
 }
 
 // DeleteHTTPRoute mocks base method.

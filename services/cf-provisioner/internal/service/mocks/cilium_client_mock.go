@@ -41,6 +41,20 @@ func (m *MockCiliumClient) EXPECT() *MockCiliumClientMockRecorder {
 	return m.recorder
 }
 
+// ApplyAppServiceIngressPolicy mocks base method.
+func (m *MockCiliumClient) ApplyAppServiceIngressPolicy(ctx context.Context, params cilium.AppServiceIngressPolicyParams) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyAppServiceIngressPolicy", ctx, params)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyAppServiceIngressPolicy indicates an expected call of ApplyAppServiceIngressPolicy.
+func (mr *MockCiliumClientMockRecorder) ApplyAppServiceIngressPolicy(ctx, params any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyAppServiceIngressPolicy", reflect.TypeOf((*MockCiliumClient)(nil).ApplyAppServiceIngressPolicy), ctx, params)
+}
+
 // ApplyDefaultDenyPolicy mocks base method.
 func (m *MockCiliumClient) ApplyDefaultDenyPolicy(ctx context.Context, vclusterNamespace, networkID string) error {
 	m.ctrl.T.Helper()
@@ -82,6 +96,20 @@ func (m *MockCiliumClient) GetPolicy(ctx context.Context, namespace, policyName 
 func (mr *MockCiliumClientMockRecorder) GetPolicy(ctx, namespace, policyName any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPolicy", reflect.TypeOf((*MockCiliumClient)(nil).GetPolicy), ctx, namespace, policyName)
+}
+
+// RemoveAppServiceIngressPolicy mocks base method.
+func (m *MockCiliumClient) RemoveAppServiceIngressPolicy(ctx context.Context, namespace, appServiceID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveAppServiceIngressPolicy", ctx, namespace, appServiceID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveAppServiceIngressPolicy indicates an expected call of RemoveAppServiceIngressPolicy.
+func (mr *MockCiliumClientMockRecorder) RemoveAppServiceIngressPolicy(ctx, namespace, appServiceID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveAppServiceIngressPolicy", reflect.TypeOf((*MockCiliumClient)(nil).RemoveAppServiceIngressPolicy), ctx, namespace, appServiceID)
 }
 
 // RemovePolicy mocks base method.

@@ -15,8 +15,15 @@ type CiliumClient interface {
 	// public subnet endpoint (used when provisioning an internet gateway).
 	ApplyIngressPolicy(ctx context.Context, params IngressPolicyParams) error
 
+	// ApplyAppServiceIngressPolicy creates or updates a world-ingress policy scoped
+	// to one public app service and one exposed port.
+	ApplyAppServiceIngressPolicy(ctx context.Context, params AppServiceIngressPolicyParams) error
+
 	// RemovePolicy deletes a named CiliumNetworkPolicy.
 	RemovePolicy(ctx context.Context, namespace, policyName string) error
+
+	// RemoveAppServiceIngressPolicy deletes the service-specific ingress policy by app service ID.
+	RemoveAppServiceIngressPolicy(ctx context.Context, namespace, appServiceID string) error
 
 	// GetPolicy returns the current state of a named policy.
 	GetPolicy(ctx context.Context, namespace, policyName string) (PolicyInfo, error)
